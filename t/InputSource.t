@@ -4,24 +4,20 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..5\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 5;
 
 use lib 't';
-use TestUtils qw(result
-		 $PERSONAL_FILE_NAME);
-use vars qw($i $loaded);
+use TestUtils qw($PERSONAL_FILE_NAME);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -30,13 +26,13 @@ result($loaded);
 # of the test code):
 
 my $is = XML::Xerces::LocalFileInputSource->new($PERSONAL_FILE_NAME);
-result($is->getSystemId() eq $PERSONAL_FILE_NAME);
+ok($is->getSystemId() eq $PERSONAL_FILE_NAME);
 
 $is->setSystemId('foo');
-result($is->getSystemId() eq 'foo');
+ok($is->getSystemId() eq 'foo');
 
 $is->setPublicId('foo');
-result($is->getPublicId() eq 'foo');
+ok($is->getPublicId() eq 'foo');
 
 $is->setEncoding('foo');
-result($is->getEncoding() eq 'foo');
+ok($is->getEncoding() eq 'foo');

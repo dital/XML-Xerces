@@ -48,4 +48,4 @@ public:
 //    SV* set_callback_obj(SV*);
 };
 
-#endif __PERLCALLBACKHANDLER
+#endif /* __PERLCALLBACKHANDLER */

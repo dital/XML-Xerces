@@ -4,30 +4,23 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..8\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
-# use blib;
+use blib;
 use XML::Xerces;
+use Test::More tests => 8;
 use Config;
 
 use lib 't';
-use TestUtils qw(result $PERSONAL_FILE_NAME);
-use vars qw($i $loaded);
+use TestUtils qw($PERSONAL_FILE_NAME);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
-
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
 
 package MyDocumentHandler;
 use strict;
@@ -40,8 +33,8 @@ sub start_element {
     $self->{test} = $attrs->getLength();
   }
 }
-sub end_element {
-}
+sub end_element {}
+
 sub characters {
 }
 sub ignorable_whitespace {
@@ -52,9 +45,9 @@ my $url = 'http://www.boyscouts.org/';
 my $local = 'Rank';
 my $ns = 'Scout';
 my $value = 'eagle scout';
-my $document = qq[<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+my $document = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <bar>
-  <foo xmlns:Scout="$url"
+  <foo xmlns:$ns="$url"
    Role="manager" $ns:$local="$value">
   </foo>
 </bar>];
@@ -68,8 +61,10 @@ $SAX->setErrorHandler($ERROR_HANDLER);
 # test getLength
 my $is = XML::Xerces::MemBufInputSource->new($document);
 $DOCUMENT_HANDLER->{test} = '';
-$SAX->parse($is);
-result($DOCUMENT_HANDLER->{test} == 3);
+eval {$SAX->parse($is)};
+XML::Xerces::error($@) if $@;
+
+ok($DOCUMENT_HANDLER->{test} == 3);
 $DOCUMENT_HANDLER->{test} = '';
 
 # we want to avoid a bunch of warnings about redefining
@@ -85,7 +80,7 @@ $^W = 0;
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
-result($DOCUMENT_HANDLER->{test} eq "$ns:$local");
+ok($DOCUMENT_HANDLER->{test} eq "$ns:$local");
 
 # test getValue
 *MyDocumentHandler::start_element = sub {
@@ -96,7 +91,7 @@ result($DOCUMENT_HANDLER->{test} eq "$ns:$local");
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
-result($DOCUMENT_HANDLER->{test} eq $value);
+ok($DOCUMENT_HANDLER->{test} eq $value);
 
 # test overloaded getValue
 *MyDocumentHandler::start_element = sub {
@@ -107,7 +102,9 @@ result($DOCUMENT_HANDLER->{test} eq $value);
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
-result($DOCUMENT_HANDLER->{test} eq $value);
+print STDERR "<$DOCUMENT_HANDLER->{test}>" , "\n";
+print STDERR "<$value>" , "\n";
+ok($DOCUMENT_HANDLER->{test} eq $value);
 
 # test to_hash()
 *MyDocumentHandler::start_element = sub {
@@ -119,11 +116,11 @@ result($DOCUMENT_HANDLER->{test} eq $value);
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
 my $hash_ref = $DOCUMENT_HANDLER->{test};
-result(ref($hash_ref) eq 'HASH'
+ok(ref($hash_ref) eq 'HASH'
       && keys %{$hash_ref} == 3
       && $hash_ref->{"$ns:$local"} eq $value);
 
-$document = qq[<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+$document = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!DOCTYPE bar SYSTEM "foo.dtd" [
 <!ELEMENT bar (foo)>
 <!ELEMENT foo EMPTY>
@@ -161,7 +158,7 @@ $SAX->setEntityResolver(MyEntityResolver->new());
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is2);
-result($DOCUMENT_HANDLER->{test} eq 'ID');
+ok($DOCUMENT_HANDLER->{test} eq 'ID');
 
 # test getType
 *MyDocumentHandler::start_element = sub {
@@ -172,4 +169,4 @@ result($DOCUMENT_HANDLER->{test} eq 'ID');
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is2);
-result($DOCUMENT_HANDLER->{test} eq 'ID');
+ok($DOCUMENT_HANDLER->{test} eq 'ID');

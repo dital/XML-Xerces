@@ -4,32 +4,25 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..8\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 8;
 use Config;
 
 use lib 't';
-use TestUtils qw(result $PERSONAL_FILE_NAME);
-use vars qw($i $loaded $error);
+use TestUtils qw($PERSONAL_FILE_NAME);
+use vars qw($loaded $error);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
-
-my $document = q[<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+my $document = q[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <contributors>
   <person Role="manager">
     <name>Mike Pogue</name>
@@ -74,13 +67,13 @@ $SAX->setDocumentHandler($DOCUMENT_HANDLER);
 $SAX->setErrorHandler($ERROR_HANDLER);
 
 $SAX->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'));
-result($DOCUMENT_HANDLER->{elements} == 10);
-result($DOCUMENT_HANDLER->{chars} == 141);
-result($DOCUMENT_HANDLER->{ws} == 0);
+ok($DOCUMENT_HANDLER->{elements} == 10);
+ok($DOCUMENT_HANDLER->{chars} == 141);
+ok($DOCUMENT_HANDLER->{ws} == 0);
 
 # test the overloaded parse version
 $SAX->parse($PERSONAL_FILE_NAME);
-result(1);
+ok(1);
 
 
 # test the progressive parsing interface
@@ -89,7 +82,7 @@ $SAX->parseFirst($PERSONAL_FILE_NAME,$token);
 while ($SAX->parseNext($token)) {
   # do nothing
 }
-result(1);
+ok(1);
 
 
 
@@ -182,11 +175,11 @@ eval {
     # do nothing
   }
 };
-result($::error);
+ok($::error);
 $::error = '';
 $SAX->parseReset($token);
 eval {
   $SAX->parse(XML::Xerces::MemBufInputSource->new($document));
 };
-result($::error);
+ok($::error);
 

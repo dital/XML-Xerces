@@ -4,32 +4,27 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..3\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 3;
 
 use lib 't';
-use TestUtils qw(result $PERSONAL_SCHEMA_FILE_NAME);
-use vars qw($i $loaded $file);
+use TestUtils qw($PERSONAL_SCHEMA_FILE_NAME);
+use vars qw($loaded $file);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
-
-my $dom = XML::Xerces::DOMParser->new();
+my $dom = XML::Xerces::XercesDOMParser->new();
 my $handler = XML::Xerces::PerlErrorHandler->new();
+my $entity_resolver = TestUtils->new();
+$dom->setEntityResolver($entity_resolver);
 $dom->setDoSchema(1);
 $dom->setDoNamespaces(1);
 $dom->setErrorHandler($handler);
@@ -38,7 +33,7 @@ $dom->setErrorHandler($handler);
 eval {
   $dom->parse($PERSONAL_SCHEMA_FILE_NAME);
 };
-result(!$@);
+ok(!$@);
 
 # test an invalid file
 open(IN,$PERSONAL_SCHEMA_FILE_NAME)
@@ -50,8 +45,8 @@ while (<IN>) {
   }
   $buf .= $_;
 }
-# print STDERR $buf;
+
 eval {
   $dom->parse(XML::Xerces::MemBufInputSource->new($buf));
 };
-result($@);
+ok($@);

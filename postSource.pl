@@ -17,58 +17,12 @@ FILE: while(<FILE>) {
 
   substitute_line($_);
 
-  # we add the two IDOM_Node operators
-  # two transcoders
-  if (/XS\(SWIG_init\)/) {
-    print TEMP;
-    while (<FILE>) {
-      print TEMP;
-      last if /Install commands/;
-    }
-    print TEMP <<'TEXT';
-    // we create the global transcoder for UTF-8 to UTF-16
-    XMLTransService::Codes failReason;
-    XMLPlatformUtils::Initialize(); // first we must create the transservice
-    UTF8_ENCODING = XMLString::transcode("UTF-8");
-    UTF8_TRANSCODER =
-      XMLPlatformUtils::fgTransService->makeNewTranscoderFor(UTF8_ENCODING,
-                                                             failReason,
-                                                             1024);
-    if (! UTF8_TRANSCODER) {
-	croak("ERROR: XML::Xerces: INIT: Could not create UTF-8 transcoder");
-    }
-
-
-    ISO_8859_1_ENCODING = XMLString::transcode("ISO-8859-1");
-    ISO_8859_1_TRANSCODER =
-      XMLPlatformUtils::fgTransService->makeNewTranscoderFor(ISO_8859_1_ENCODING,
-                                                             failReason,
-                                                             1024);
-    if (! ISO_8859_1_TRANSCODER) {
-	croak("ERROR: XML::Xerces: INIT: Could not create ISO-8859-1 transcoder");
-    }
-
-TEXT
-    next;
-  }
-
   # need to cast this properly
   if (/XS\(_wrap_XMLValidator_checkContent/) {
     fix_method_source(\*FILE,
 		      \*TEMP,
 		      'arg0->checkContent',
 		      "            result = (int )arg0->checkContent(arg1,(QName **const)arg2,arg3);\n",
-		      0
-		     );
-    next FILE;
-  }
-
-  # need to keep the STRLEN macro for other archetectures
-  if (/XS\(_wrap_new_MemBufInputSource/) {
-    fix_method_source(\*FILE,
-		      \*TEMP,
-		      'unsigned int arg2',
-		      "    STRLEN arg2;\n",
 		      0
 		     );
     next FILE;

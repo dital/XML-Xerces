@@ -7,29 +7,25 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..2\n"; }
-END {print "not ok 1\n" unless $loaded;}
+END {ok(0) unless $loaded;}
+
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 2;
 use Config;
 
 use lib 't';
-use TestUtils qw(result $SAMPLE_DIR);
-use vars qw($i $loaded $file);
+use TestUtils qw($SAMPLE_DIR);
+use vars qw($loaded $file);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
-
-my $document = q[<?xml version="1.0" encoding="utf-8"?>
+my $document = q[<?xml version="1.0" encoding="UTF-8"?>
 <contributors>
 	<person Role="manager">
 		<name>Mike Pogue</name>
@@ -56,6 +52,6 @@ $perl =~ s/^\#!//;
 my $output = `$perl -Mblib $SAMPLE_DIR/DOMCount.pl $file 2>/dev/null`;
 # print STDERR "Out <$output>\n";
 $output =~ /(\d+) elems/;
-result($1 == 10);
+ok($1 == 10, 'element count');
 
 END {unlink $file;}

@@ -4,101 +4,38 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..9\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 9;
 use Cwd;
 
 use lib 't';
-use TestUtils qw(result
-		 $PERSONAL_FILE_NAME
+use TestUtils qw($PERSONAL_FILE_NAME
 		 $PERSONAL_SCHEMA_FILE_NAME
 		 $SCHEMA_FILE_NAME
 		 $PUBLIC_RESOLVER_FILE_NAME
 		 $SYSTEM_RESOLVER_FILE_NAME
 		 $PERSONAL_DTD_NAME);
-use vars qw($i $loaded $file $test);
+use vars qw($loaded $file $test);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
-
-package MyEntityResolver;
-use strict;
-use vars qw(@ISA $test);
-use TestUtils qw($PERSONAL_DTD_NAME
-		 $SCHEMA_FILE_NAME
-		 $CATALOG);
-@ISA = qw(XML::Xerces::PerlEntityResolver);
-
-sub new {
-  return bless {}, shift;
-}
-
-sub resolve_entity {
-  my ($self,$pub,$sys) = @_;
-#  print STDERR "Got PUBLIC: $pub\n";
-#  print STDERR "Got SYSTEM: $sys\n";
-  $main::test = 1;
-
-  # we parse the example XML Catalog
-  my $DOM = XML::Xerces::DOMParser->new();
-  my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
-  $DOM->setErrorHandler($ERROR_HANDLER);
-  $DOM->parse(XML::Xerces::LocalFileInputSource->new($CATALOG));
-
-  # now retrieve the mappings
-  my $doc = $DOM->getDocument();
-  my @Maps = $doc->getElementsByTagName('Map');
-  my %Maps = map {($_->getAttribute('PublicId'),
-		   $_->getAttribute('HRef'))} @Maps;
-  my @Remaps = $doc->getElementsByTagName('Remap');
-  my %Remaps = map {($_->getAttribute('SystemId'),
-		     $_->getAttribute('HRef'))} @Remaps;
-
-  # now check which one we were asked for
-  my $href;
-  if ($pub) {
-    $href = $Maps{$pub};
-  } elsif ($sys) {
-    $href = $Remaps{$sys};
-  } else {
-    croak("Neither PublicId or SystemId were defined");
-  }
-  my $is;
-  eval {
-    $is = XML::Xerces::LocalFileInputSource->new($href);
-  };
-  if ($@) {
-    print STDERR "Resolver: ", $@->getMessage(), "\n"
-      if ref $@;
-    print STDERR "Resolver: $@\n";
-  }
-  return $is;
-}
-
-package main;
 $test = 0;
-my $DOM = XML::Xerces::DOMParser->new();
+my $DOM = XML::Xerces::XercesDOMParser->new();
 my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
 $DOM->setErrorHandler($ERROR_HANDLER);
 
 # see if we can create and set an entity resolver
-my $ENTITY_RESOLVER = MyEntityResolver->new();
+my $ENTITY_RESOLVER = TestUtils->new();
 $DOM->setEntityResolver($ENTITY_RESOLVER);
-result(1);
+ok(1);
 
 # now lets see if the resolver gets invoked
 eval {
@@ -109,7 +46,7 @@ if ($@) {
     if ref $@;
   print STDERR $@;
 }
-result($test);
+ok($test);
 
 my $doc;
 eval {
@@ -120,11 +57,11 @@ if ($@) {
     if ref $@;
   print STDERR $@;
 }
-result(ref $doc && $doc->isa('XML::Xerces::DOM_Document'));
+ok(ref $doc && $doc->isa('XML::Xerces::DOMDocument'));
 
 my $root = $doc->getDocumentElement();
-result(ref $root && 
-       $root->isa('XML::Xerces::DOM_Element') &&
+ok(ref $root && 
+       $root->isa('XML::Xerces::DOMElement') &&
        $root->getNodeName() eq 'personnel'
       );
 
@@ -138,14 +75,14 @@ if ($@) {
     if ref $@;
   print STDERR $@;
 }
-result($test);
+ok($test);
 
 $doc = $DOM->getDocument();
-result(ref $doc && $doc->isa('XML::Xerces::DOM_Document'));
+ok(ref $doc && $doc->isa('XML::Xerces::DOMDocument'));
 
 $root = $doc->getDocumentElement();
-result(ref $root && 
-       $root->isa('XML::Xerces::DOM_Element') &&
+ok(ref $root && 
+       $root->isa('XML::Xerces::DOMElement') &&
        $root->getNodeName() eq 'personnel'
       );
 
@@ -196,7 +133,7 @@ SCHEMA
 $DOM->reset();
 $DOM->setDoSchema(1);
 $DOM->setDoNamespaces(1);
-# $DOM->setValidationScheme($XML::Xerces::DOMParser::Val_Always);
+# $DOM->setValidationScheme($XML::Xerces::AbstractDOMParser::Val_Always);
 eval {
   $DOM->parse(XML::Xerces::MemBufInputSource->new($document));
 };
@@ -205,4 +142,4 @@ if ($@) {
     if ref $@;
   die $@;
 }
-result(1);
+ok(1);

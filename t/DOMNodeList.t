@@ -1,26 +1,23 @@
 # Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl DOM_NodeList.t'
+# `make test'. After `make install' it should work as `perl DOMNodeList.t'
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..10\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 use Cwd;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 10;
 
 use lib 't';
-use TestUtils qw(result $DOM $PERSONAL_FILE_NAME is_object);
-use vars qw($i $loaded);
+use TestUtils qw($DOM $PERSONAL_FILE_NAME);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -33,15 +30,14 @@ my $doc = $DOM->getDocument();
 
 # test automatic conversion to perl list
 my @node_list = $doc->getElementsByTagName('person');
-result(scalar @node_list == 6);
+ok(scalar @node_list == 6);
 
-# test that we can still get a DOM_NodeList object
+# test that we can still get a DOMNodeList object
 my $dom_node_list = $doc->getElementsByTagName('person');
-result(is_object($dom_node_list) && 
-       $dom_node_list->isa('XML::Xerces::DOM_NodeList'));
+ok(UNIVERSAL::isa($dom_node_list,'XML::Xerces::DOMNodeList'));
 
-result($dom_node_list->getLength() == scalar @node_list);
+ok($dom_node_list->getLength() == scalar @node_list);
 
 for (my $i=0;$i<scalar @node_list;$i++) {
-  result($node_list[$i] == $dom_node_list->item($i));
+  ok($node_list[$i] == $dom_node_list->item($i));
 }

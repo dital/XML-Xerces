@@ -3,18 +3,21 @@
 
 #include "PerlCallbackHandler.hpp"
 #include "xercesc/sax/ErrorHandler.hpp"
+
+XERCES_CPP_NAMESPACE_USE
+
 class PerlErrorCallbackHandler : public ErrorHandler
-			       , public PerlCallbackHandler 
+//			       , public PerlCallbackHandler 
 {
 
 protected:
-//    SV *callbackObj;
+    SV *callbackObj;
 
 public:
 
-    PerlErrorCallbackHandler() {};
-    PerlErrorCallbackHandler(SV *obj) : PerlCallbackHandler(obj) {};
-    ~PerlErrorCallbackHandler() {};
+    PerlErrorCallbackHandler();
+    PerlErrorCallbackHandler(SV *obj);
+    ~PerlErrorCallbackHandler();
 
     SV* set_callback_obj(SV*);
 
@@ -22,7 +25,7 @@ public:
     void warning(const SAXParseException& exception);
     void error(const SAXParseException& exception);
     void fatalError(const SAXParseException& exception);
-    void resetErrors(void);
+    void resetErrors();
 };
 
 #endif /* __PERLERRORCALLBACKHANDLER */

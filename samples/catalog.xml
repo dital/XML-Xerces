@@ -7,5 +7,7 @@
       HRef="samples/personal.dtd"/>
   <Remap SystemId="bar.xsd"
       HRef="samples/personal.xsd"/>
+  <Remap SystemId="personal.xsd"
+      HRef="samples/personal.xsd"/>
 </Catalog>
 

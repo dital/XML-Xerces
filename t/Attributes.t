@@ -7,21 +7,22 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..14\n"; }
-END {print "not ok 1\n" unless $loaded;}
+END {ok(0) unless $loaded;}
+
 use Carp;
-# use blib;
+use blib;
 use XML::Xerces;
+use Test::More tests => 14;
 use Config;
 
 use lib 't';
-use TestUtils qw(result $PERSONAL_FILE_NAME);
+use TestUtils qw($PERSONAL_FILE_NAME);
 use vars qw($i $loaded);
 use strict;
 
 $loaded = 1;
 $i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -52,7 +53,7 @@ my $url = 'http://www.boyscouts.org/';
 my $local = 'Rank';
 my $ns = 'Scout';
 my $value = 'eagle scout';
-my $document = qq[<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+my $document = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <bar>
   <foo xmlns:Scout="$url"
    Role="manager" $ns:$local="$value">
@@ -69,7 +70,7 @@ $SAX2->setErrorHandler($ERROR_HANDLER);
 my $is = XML::Xerces::MemBufInputSource->new($document);
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} == 2);
+ok($CONTENT_HANDLER->{test} == 2);
 $CONTENT_HANDLER->{test} = '';
 
 # we want to avoid a bunch of warnings about redefining
@@ -85,7 +86,7 @@ $^W = 0;
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} eq $url);
+ok($CONTENT_HANDLER->{test} eq $url);
 
 # test getLocalName
 *MyContentHandler::start_element = sub {
@@ -96,7 +97,7 @@ result($CONTENT_HANDLER->{test} eq $url);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} eq $local);
+ok($CONTENT_HANDLER->{test} eq $local);
 
 # test getQName
 *MyContentHandler::start_element = sub {
@@ -107,7 +108,7 @@ result($CONTENT_HANDLER->{test} eq $local);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} eq "$ns:$local");
+ok($CONTENT_HANDLER->{test} eq "$ns:$local");
 
 # test getIndex
 *MyContentHandler::start_element = sub {
@@ -118,7 +119,7 @@ result($CONTENT_HANDLER->{test} eq "$ns:$local");
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} == 1);
+ok($CONTENT_HANDLER->{test} == 1);
 
 # test getValue
 *MyContentHandler::start_element = sub {
@@ -129,7 +130,7 @@ result($CONTENT_HANDLER->{test} == 1);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} eq $value);
+ok($CONTENT_HANDLER->{test} eq $value);
 
 # test overloaded getValue
 *MyContentHandler::start_element = sub {
@@ -140,18 +141,18 @@ result($CONTENT_HANDLER->{test} eq $value);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} eq $value);
+ok($CONTENT_HANDLER->{test} eq $value);
 
 # test overloaded getValue
 *MyContentHandler::start_element = sub {
   my ($self,$uri,$localname,$qname,$attrs) = @_;
   if ($localname eq 'foo') {
-    $self->{test} = $attrs->getValue("$ns:$local");
+    $self->{test} = $attrs->getValue($url, $local);
   }
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-result($CONTENT_HANDLER->{test} eq $value);
+ok($CONTENT_HANDLER->{test} eq $value);
 
 # test to_hash()
 *MyContentHandler::start_element = sub {
@@ -163,13 +164,13 @@ result($CONTENT_HANDLER->{test} eq $value);
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
 my $hash_ref = $CONTENT_HANDLER->{test};
-result(ref($hash_ref) eq 'HASH'
+ok(ref($hash_ref) eq 'HASH'
       && keys %{$hash_ref} == 2
       && $hash_ref->{"$ns:$local"}{value} eq $value
       && $hash_ref->{"$ns:$local"}{URI} eq $url
       );
 
-$document = qq[<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+$document = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!DOCTYPE bar SYSTEM "foo.dtd" [
 <!ELEMENT bar (foo)>
 <!ELEMENT foo EMPTY>
@@ -207,18 +208,18 @@ $SAX2->setEntityResolver(MyEntityResolver->new());
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
-result($CONTENT_HANDLER->{test} eq 'ID');
+ok($CONTENT_HANDLER->{test} eq 'ID');
 
 # test overloaded getType
 *MyContentHandler::start_element = sub {
   my ($self,$uri,$localname,$qname,$attrs) = @_;
   if ($localname eq 'foo') {
-    $self->{test} = $attrs->getType('id');
+    $self->{test} = $attrs->getType('', 'id');
   }
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
-result($CONTENT_HANDLER->{test} eq 'ID');
+ok($CONTENT_HANDLER->{test} eq 'ID');
 
 # test getType
 *MyContentHandler::start_element = sub {
@@ -229,7 +230,7 @@ result($CONTENT_HANDLER->{test} eq 'ID');
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
-result($CONTENT_HANDLER->{test} eq 'ID');
+ok($CONTENT_HANDLER->{test} eq 'ID');
 
 # test type field of to_hash()
 *MyContentHandler::start_element = sub {
@@ -241,7 +242,7 @@ result($CONTENT_HANDLER->{test} eq 'ID');
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
 $hash_ref = $CONTENT_HANDLER->{test};
-result(ref($hash_ref) eq 'HASH'
+ok(ref($hash_ref) eq 'HASH'
       && keys %{$hash_ref} == 2
       && $hash_ref->{id}{type} eq 'ID'
       );

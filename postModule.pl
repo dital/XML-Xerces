@@ -5,20 +5,20 @@ use SWIG qw(remove_method skip_to_closing_brace fix_method);
 
 my($progname) = $0 =~ m"\/([^/]*)";
 
-my @dom_node_list_methods = qw(DOM_Document::getElementsByTagName
-			    DOM_Document::getElementsByTagNameNS
-			    DOM_Element::getElementsByTagName
-			    DOM_Element::getElementsByTagNameNS
-			    DOM_Node::getChildNodes
+my @domnode_list_methods = qw(DOMDocument::getElementsByTagName
+			    DOMDocument::getElementsByTagNameNS
+			    DOMElement::getElementsByTagName
+			    DOMElement::getElementsByTagNameNS
+			    DOMNode::getChildNodes
 			    );
 
-my @dom_node_map_methods = qw(DOM_DocumentType::getEntities
-			    DOM_DocumentType::getNotations
-			    DOM_Node::getAttributes
+my @domnode_map_methods = qw(DOMDocumentType::getEntities
+			    DOMDocumentType::getNotations
+			    DOMNode::getAttributes
 			    );
 
-my @dom_copy_methods = qw(DOM_XMLDecl
-			  DOM_Attr
+my @domcopy_methods = qw(DOMXMLDecl
+			  DOMAttr
 			 );
 
 my %VARS;
@@ -37,14 +37,9 @@ for my $file (@ARGV) {
     if (/^package/) {
       ($CURR_CLASS) = m/package\s+XML::Xerces::([\w_]+);/;
       print TEMP;
-      unless ($CURR_CLASS ne 'XML::Xerces'
-	      and $CURR_CLASS ne 'XML::Xercesc'
-	      and exists $VARS{$CURR_CLASS}) {
-	$VARS{$CURR_CLASS}++;
-	print TEMP 'use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);', "\n";
-      }
       next;
     }
+
     # for some reason (I don't want to figure out) SWIG puts a bunch of
     # methods directly in the XML::Xerces namespace that don't belong there
     # and are duplicated within their proper classes, so we delete them
@@ -58,7 +53,7 @@ for my $file (@ARGV) {
     # we're only keeping DESTROY for the parsers until we know better
     # we get core dumps if it's defined on some classes
     if (/sub DESTROY/) {
-      unless (grep {$_ eq $CURR_CLASS} qw(DOMParser
+      unless (grep {$_ eq $CURR_CLASS} qw(XercesDOMParser
 					  SAXParser
 					  SAX2XMLReader))
       {
@@ -70,7 +65,7 @@ for my $file (@ARGV) {
 		   "    return unless defined \$self;\n",
 		   1);
       }
-      if ($CURR_CLASS eq 'DOM_Document') {
+      if ($CURR_CLASS eq 'DOMDocument') {
 	print TEMP <<'EOT';
 sub DESTROY {
     my $self = shift;
@@ -84,8 +79,8 @@ EOT
       next;
     }
 
-    # we remove all the enums inherited through DOM_Node
-    next if /^*[_A-Z]+_NODE =/ && !/DOM_Node/;
+    # we remove all the enums inherited through DOMNode
+    next if /^*[_A-Z]+_NODE =/ && !/DOMNode/;
 
     # now we set these aliases correctly
     s/\*XML::Xerces::/*XML::Xercesc::/;
@@ -112,26 +107,26 @@ EOT
     # split on multiple lines to be readable, using s{}{}x
     s{
       return\s*undef\s*if\s*\(\!defined\(\$result\)\)
-     }{return \$result unless ref(\$result) =~ m[XML::Xerces]}x;
+     }{return \$result unless UNIVERSAL::isa(\$result,'XML::Xerces')}x;
 
     #######################################################################
     #
     # Perl API specific changes
     #
 
-    #   DOM_NodeList: automatically convert to perl list
+    #   DOMNodeList: automatically convert to perl list
     #      if called in a list context
-    if (grep {/$CURR_CLASS/} @dom_node_list_methods) {
+    if (grep {/$CURR_CLASS/} @domnode_list_methods) {
       if (my ($sub) = /^sub\s+([\w_]+)/) {
 	$sub = "$ {CURR_CLASS}::$sub";
-	if (grep {/$sub$/} @dom_node_list_methods) {
+	if (grep {/$sub$/} @domnode_list_methods) {
 	  my $fix = <<'EOT';
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_list() if wantarray;
-    $DOM_NodeList::OWNER{$result} = 1; 
+    $DOMNodeList::OWNER{$result} = 1; 
 EOT
 	  fix_method(\*FILE,
 		     \*TEMP,
@@ -143,19 +138,19 @@ EOT
       }
     }
 
-    #   DOM_NamedNodeMap: automatically convert to perl hash
+    #   DOMNamedNodeMap: automatically convert to perl hash
     #      if called in a list context
-    if (grep {/$CURR_CLASS/} @dom_node_map_methods) {
+    if (grep {/$CURR_CLASS/} @domnode_map_methods) {
       if (my ($sub) = /^sub\s+([\w_]+)/) {
 	$sub = "$ {CURR_CLASS}::$sub";
-	if (grep {/$sub$/} @dom_node_map_methods) {
+	if (grep {/$sub$/} @domnode_map_methods) {
 	  my $fix = <<'EOT';
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_hash() if wantarray;
-    $DOM_NamedNodeMap::OWNER{$result} = 1;
+    $DOMNamedNodeMap::OWNER{$result} = 1;
 EOT
 	  fix_method(\*FILE,
 		     \*TEMP,
@@ -185,17 +180,86 @@ EOT
       }
     }
 
+
+    # handle SWIG bug
+    if ($CURR_CLASS eq 'DOMNode') {
+      if (/^\*([a-z]\w+)/) {
+	print TEMP <<"EOT";
+sub $1 {
+    my \@args = \@_;
+    if (\$args[0]->isa('XML::Xerces::DOMDocument')) {
+      \$args[0] = \$args[0]->toDOMNode();
+    }
+    my \$result = XML::Xercesc::DOMNode_$1(\@args);
+    return \$result unless UNIVERSAL::isa(\$result,'XML::Xerces');
+    my \%resulthash;
+    tie \%resulthash, ref(\$result), \$result;
+    return bless \\\%resulthash, ref(\$result);
+}
+EOT
+	next;
+      }
+      if (/^sub\s+[a-z]/) {
+	my $fix = <<'EOT';
+    if ($args[0]->isa('XML::Xerces::DOMDocument')) {
+      $args[0] = $args[0]->toDOMNode();
+    }
+EOT
+	fix_method(\*FILE,
+		   \*TEMP,
+		   qr/my \@args/,
+		   $fix,
+		   1);
+	next;
+      }
+    }
+
+    if ($CURR_CLASS eq 'DOMWriter') {
+      if (/^\*writeNode/) {
+	print TEMP <<'EOT';
+sub writeNode {
+    my @args = @_;
+    if ($args[2]->isa('XML::Xerces::DOMDocument')) {
+      $args[2] = $args[2]->toDOMNode();
+    }
+    my $result = XML::Xercesc::DOMWriter_writeNode(@args);
+    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
+    my %resulthash;
+    tie %resulthash, ref($result), $result;
+    return bless \%resulthash, ref($result);
+}
+EOT
+	next;
+      }
+      if (/^\*writeToString/) {
+	print TEMP <<'EOT';
+sub writeToString {
+    my @args = @_;
+    if ($args[1]->isa('XML::Xerces::DOMDocument')) {
+      $args[1] = $args[1]->toDOMNode();
+    }
+    my $result = XML::Xercesc::DOMWriter_writeToString(@args);
+    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
+    my %resulthash;
+    tie %resulthash, ref($result), $result;
+    return bless \%resulthash, ref($result);
+}
+EOT
+	next;
+      }
+    }
+
     # we need to fix setAttribute() so that undefined values don't
     # cause a core dump
-    if ($CURR_CLASS =~ /DOM_Element/) {
-      if (/XML::Xercesc::DOM_Element_setAttribute;/) {
+    if ($CURR_CLASS =~ /DOMElement/) {
+      if (/XML::Xercesc::DOMElement_setAttribute;/) {
 	print TEMP <<"EOT";
 sub setAttribute {
     my (\$self,\$attr,\$val) = \@_;
     return unless defined \$attr and defined \$val;
-    my \$result = XML::Xercesc::DOM_Element_setAttribute(\@_);
+    my \$result = XML::Xercesc::DOMElement_setAttribute(\@_);
     return \$result unless ref(\$result) =~ m[XML::Xerces];
-    \$XML::Xerces::DOM_Attr::OWNER{\$result} = 1; 
+    \$XML::Xerces::DOMAttr::OWNER{\$result} = 1; 
     my %resulthash;
     tie %resulthash, ref(\$result), \$result;
     return bless \\\%resulthash, ref(\$result);
@@ -205,316 +269,7 @@ EOT
       }
     }
 
-    ######################################################################
-    #
-    # Method Overloads
-
-    # don't print out SWIG's default overloaded methods, we'll make our own
-    next if /XML::Xerces.*__overload__/;
-
-    if ($CURR_CLASS =~ /(DOMParser|SAXParser)/) {
-      my $parser = $1;
-      if (/XML::Xercesc::${parser}_parse;/) {
-	print TEMP <<"EOT";
-sub parse {
-    my \@args = \@_;
-    if (ref \$args[1]) {
-      XML::Xercesc::${parser}_parse__overload__is(\@args);
-    } else {
-      XML::Xercesc::${parser}_parse(\@args);
-    }
-}
-EOT
-        next;
-      } elsif (/XML::Xercesc::${parser}_parseFirst/) {
-	print TEMP <<"EOT";
-sub parseFirst {
-    my \@args = \@_;
-    if (ref \$args[1]) {
-      XML::Xercesc::${parser}_parseFirst__overload__is(\@args);
-    } else {
-      XML::Xercesc::${parser}_parseFirst(\@args);
-    }
-}
-EOT
-        next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /Attributes/) {
-      if (/XML::Xercesc::Attributes_getType;/) {
-	print TEMP <<'EOT';
-sub getType {
-    my @args = @_;
-    if (scalar @args == 2) {
-      if ($args[1] =~ /^\d+$/) {
-        return XML::Xercesc::Attributes_getType__overload__index(@args);
-      } else {
-        return XML::Xercesc::Attributes_getType__overload__qname(@args);
-      }
-    } else {
-      return XML::Xercesc::Attributes_getType(@args);
-    }
-}
-EOT
-        next;
-      } elsif (/XML::Xercesc::Attributes_getValue;/) {
-	print TEMP <<'EOT';
-sub getValue {
-    my @args = @_;
-    if (scalar @args == 2) {
-      if ($args[1] =~ /^\d+$/) {
-        return XML::Xercesc::Attributes_getValue__overload__index(@args);
-      } else {
-        return XML::Xercesc::Attributes_getValue__overload__qname(@args);
-      }
-    } else {
-      return XML::Xercesc::Attributes_getValue(@args);
-    }
-}
-EOT
-        next;
-      } elsif (/XML::Xercesc::Attributes_getIndex;/) {
-	print TEMP <<'EOT';
-sub getIndex {
-    my @args = @_;
-    if (scalar @args == 2) {
-      return XML::Xercesc::Attributes_getIndex__overload__qname(@args);
-    } else {
-      return XML::Xercesc::Attributes_getIndex(@args);
-    }
-}
-EOT
-        next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /AttributeList/) {
-      if (/XML::Xercesc::AttributeList_getType;/) {
-	print TEMP <<'EOT';
-sub getType {
-    my @args = @_;
-    if ($args[1] =~ /^\d+$/) {
-      return XML::Xercesc::AttributeList_getType__overload__index(@args);
-    } else {
-      return XML::Xercesc::AttributeList_getType(@args);
-    }
-}
-EOT
-        next;
-      } elsif (/XML::Xercesc::AttributeList_getValue;/) {
-	print TEMP <<'EOT';
-sub getValue {
-    my @args = @_;
-    if ($args[1] =~ /^\d+$/) {
-      return XML::Xercesc::AttributeList_getValue__overload__index(@args);
-    } else {
-      return XML::Xercesc::AttributeList_getValue(@args);
-    }
-}
-EOT
-        next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /URLInputSource/) {
-      if (/^sub.*__constructor__/) {
-	remove_method(\*FILE);
-	next;
-      } elsif (/^sub\s+new/) {
-	my $subst_func = sub {$_[0] = '' if $_[0] =~ /tied/;};
-	my $new = <<'EOT';
-    my $self;
-    if (ref $args[0]) {
-      $args[0] = tied(%{$args[0]});
-      $self = XML::Xercesc::new_URLInputSource(@args);
-    } elsif (scalar @args == 2) {
-      $self = XML::Xercesc::new_URLInputSource__constructor__sys(@args);
-    } else {
-      $self = XML::Xercesc::new_URLInputSource__constructor__pub(@args);
-    }
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/\$self = XML::Xercesc::new_/,
-		   $new,
-		   0,
-		   $subst_func,
-		  );
-	next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /XMLUri/) {
-      if (/^sub.*__constructor__/) {
-	remove_method(\*FILE);
-	next;
-      } elsif (/^sub\s+new/) {
-	my $subst_func = sub {$_[0] = '' if $_[0] =~ /tied/;};
-	my $new = <<'EOT';
-    my $self;
-    if (scalar @args == 1) {
-      $self = XML::Xercesc::new_XMLUri__constructor__uri(@args);
-    } else {
-      $args[0] = tied(%{$args[0]});
-      $self = XML::Xercesc::new_XMLUri(@args);
-    }
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/\$self = XML::Xercesc::new_/,
-		   $new,
-		   0,
-		   $subst_func,
-		  );
-	next;
-      }
-    }
-
-    if (grep {/$CURR_CLASS/} @dom_copy_methods) {
-      if (/^sub.*__constructor__/) {
-	remove_method(\*FILE);
-	next;
-      } elsif (/^sub\s+new/) {
-	my $new = <<"EOT";
-    my \$self;
-    if (ref \$pkg) {
-      \$self = XML::Xercesc::new_${CURR_CLASS}__constructor__copy(\$pkg);
-      \$pkg = ref \$pkg;
-    } else {
-      \$self = XML::Xercesc::new_${CURR_CLASS}();
-    }
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/\$self = XML::Xercesc::new_/,
-		   $new);
-	next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /LocalFileInputSource/) {
-      # this line assumed the first constructor, so we remove it
-      if (/^sub.*__constructor__/) {
-	remove_method(\*FILE);
-	next;
-      } elsif (/^sub\s+new/) {
-	my $new = <<'EOT';
-    my $self;
-    if (scalar @args == 1) {
-      $self = XML::Xercesc::new_LocalFileInputSource(@args);
-    } else {
-      $self = XML::Xercesc::new_LocalFileInputSource__constructor__base(@args);
-    }
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/\$self = XML::Xercesc::new_/,
-		   $new);
-	next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /(Perl(\w+)Handler)/) {
-      my $class = $1;
-      # this line assumed the first constructor, so we remove it
-      if (/^sub.*__constructor__/) {
-	remove_method(\*FILE);
-	next;
-      } elsif (/^sub\s+new/) {
-	my $new = <<"EOT";
-    my \$self;
-    if (scalar \@args == 1) {
-      \$self = XML::Xercesc::new_$ {class}__constructor__arg(\@args);
-    } else {
-      \$self = XML::Xercesc::new_$ {class}();
-    }
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/\$self = XML::Xercesc::new_/,
-		   $new);
-	next;
-      }
-    }
-
-    if (/XML::Xerces::XMLReaderFactory_createXMLReader/) {
-	print TEMP <<'EOT';
-sub createXMLReader {
-    my @args = @_;
-    if (scalar @args == 2) {
-      XML::Xercesc::XMLReaderFactory_createXMLReader__overload__1(@args);
-    } else {
-      XML::Xercesc::XMLReaderFactory_createXMLReader(@args);
-    }
-}
-EOT
-      # we don't print out the function
-      next;
-    }
-
-    if ($CURR_CLASS =~ /XMLURL/) {
-      if (/^sub.*__constructor__/) {
-	remove_method(\*FILE);
-	next;
-      } elsif (/^sub\s+new/) {
-	my $new = <<'EOT';
-    my $self;
-    if (ref($args[0])) {
-      if (scalar @args == 1) {
-        $self = XML::Xercesc::new_XMLURL__constructor__copy(@args);
-      } else {
-        $self = XML::Xercesc::new_XMLURL__constructor__url_base(@args);
-      }
-    } elsif (! scalar @args) {
-      $self = XML::Xercesc::new_XMLURL();
-    } elsif (scalar @args == 1) {
-      $self = XML::Xercesc::new_XMLURL__constructor__text(@args);
-    } else {
-      $self = XML::Xercesc::new_XMLURL__constructor__base(@args);
-    }
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/\$self = XML::Xercesc::new_/,
-		   $new,
-		   0,
-		  );
-	next;
-      }
-
-      if (/XML::Xercesc::XMLURL_makeRelativeTo/) {
-	print TEMP <<'EOT';
-sub makeRelativeTo {
-    my @args = @_;
-    if (ref($args[1])) {
-      XML::Xercesc::XMLURL_makeRelativeTo__overload__XMLURL(@args);
-    } else {
-      XML::Xercesc::XMLURL_makeRelativeTo(@args);
-    }
-}
-EOT
-        # we don't print out the function
-        next;
-      } elsif (/XML::Xercesc::XMLURL_setURL/) {
-	print TEMP <<'EOT';
-sub setURL {
-    my @args = @_;
-    if (scalar @args == 2) {
-      XML::Xercesc::XMLURL_setURL(@args);
-    } elsif (ref($args[1])) {
-      XML::Xercesc::XMLURL_setURL__overload__XMLURL(@args);
-    } else {
-      XML::Xercesc::XMLURL_setURL__overload__string(@args);
-    }
-}
-EOT
-        # we don't print out the function
-        next;
-      }
-    }
-
-    if ($CURR_CLASS =~ /DOM_DOMException/) {
+    if ($CURR_CLASS =~ /DOMDOMException/) {
       if (/^sub\s+new/) {
 	# add the reverse name lookup for the error codes
 	print TEMP <<'EOT';
@@ -643,18 +398,21 @@ EOT
       next;
     }
 
-    if ($CURR_CLASS eq 'DOM_Document') {
+    if ($CURR_CLASS eq 'DOMDocumentTraversal') {
       if (/^sub\s+createTreeWalker/) {
 	my $fix = <<'EOT';
     my ($self,$root,$what,$filter,$expand) = @_;
-    my $callback = $XML::Xerces::DOM_TreeWalker::OWNER{$self}->{__NODE_FILTER};
+    my $callback = $XML::Xerces::DOMTreeWalker::OWNER{$self}->{__NODE_FILTER};
     if (defined $callback) {
       $callback->set_callback_obj($filter);
     } else {
       $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
-      $XML::Xerces::DOM_TreeWalker::OWNER{$self}->{__NODE_FILTER} = $callback;
+      $XML::Xerces::DOMTreeWalker::OWNER{$self}->{__NODE_FILTER} = $callback;
     }
     my @args = ($self,$root,$what,$callback,$expand);
+    if ($args[0]->isa('XML::Xerces::DOMDocument')) {
+      $args[0] = $args[0]->toDOMDocumentTraversal();
+    }
 EOT
 	fix_method(\*FILE,
 		   \*TEMP,
@@ -665,18 +423,21 @@ EOT
       }
     }
 
-    if ($CURR_CLASS eq 'DOM_Document') {
+    if ($CURR_CLASS eq 'DOMDocumentTraversal') {
       if (/^sub\s+createNodeIterator/) {
 	my $fix = <<'EOT';
     my ($self,$root,$what,$filter,$expand) = @_;
-    my $callback = $XML::Xerces::DOM_NodeIterator::OWNER{$self}->{__NODE_FILTER};
+    my $callback = $XML::Xerces::DOMNodeIterator::OWNER{$self}->{__NODE_FILTER};
     if (defined $callback) {
       $callback->set_callback_obj($filter);
     } else {
       $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
-      $XML::Xerces::DOM_NodeIterator::OWNER{$self}->{__NODE_FILTER} = $callback;
+      $XML::Xerces::DOMNodeIterator::OWNER{$self}->{__NODE_FILTER} = $callback;
     }
     my @args = ($self,$root,$what,$callback,$expand);
+    if ($args[0]->isa('XML::Xerces::DOMDocument')) {
+      $args[0] = $args[0]->toDOMDocumentTraversal();
+    }
 EOT
 	fix_method(\*FILE,
 		   \*TEMP,
@@ -687,15 +448,28 @@ EOT
       }
     }
 
-    # look for: *getDocument = *XML::Xercesc::*_getDocument;
-    if (/\*XML::Xercesc::DOMParser_getDocument/) {
+    if ($CURR_CLASS eq 'DOMWriter') {
+      if (/^sub\s+createNodeIterator/) {
+	my $fix = <<'EOT';
+EOT
+	fix_method(\*FILE,
+		   \*TEMP,
+		   qr/my \@args/,
+		   $fix,
+		   0);
+	next;
+      }
+    }
+
+    # fix the issue that deleting a parser deletes the document
+    if (/\*XML::Xercesc::AbstractDOMParser_getDocument/) {
       print TEMP <<'EOT';
 # hold a reference to the parser internally, so that the
 # document can exist after the parser has gone out of scope
 sub getDocument {
   my ($self) = @_;
-  my $result = XML::Xercesc::DOMParser_getDocument($self);
-  $XML::Xerces::DOM_Document::OWNER{$result}->{__PARSER} = $self;
+  my $result = XML::Xercesc::AbstractDOMParser_getDocument($self);
+  $XML::Xerces::DOMDocument::OWNER{$result}->{__PARSER} = $self;
   return $result;
 }
 EOT

@@ -82,7 +82,7 @@ perl DOMPrint.pl -v personal.xml
 cd &XercesPInstallDir;/samples/data
 DOMPrint -v personal.xml
 
-&lt;?xml version='1.0' encoding='utf-8' ?&gt;
+&lt;?xml version='1.0' encoding='UTF-8' ?&gt;
 &lt;!-- Revision: 63 1.7 samples/data/personal.xml, xml4c2Docs, xml4c2, xml4c2_3_2  --&gt;
 &lt;personnel&gt;
 	&lt;person id="Big.Boss"&gt;

@@ -25,9 +25,9 @@ sub error {
   my $error = shift;
   print STDERR "Error in eval: ";
   if (ref $error) {
-    if ($error->isa('XML::Xerces::DOM_DOMException')) {
+    if ($error->isa('XML::Xerces::DOMException')) {
       croak "Message: <", $error->getMessage(), 
-	"> Code: ", $XML::Xerces::DOM_DOMException::CODES[$error->getCode];
+	"> Code: ", $XML::Xerces::DOMException::CODES[$error->getCode];
     } else {
       croak $error->getMessage();
     }
@@ -35,6 +35,26 @@ sub error {
     croak $error;
   }
 }
+
+package XML::Xerces::DOMException;
+use vars qw(@CODES);
+@CODES = qw(__NONEXISTENT__
+	    INDEX_SIZE_ERR
+	    DOMSTRING_SIZE_ERR
+	    HIERARCHY_REQUEST_ERR
+	    WRONG_DOCUMENT_ERR
+	    INVALID_CHARACTER_ERR
+	    NO_DATA_ALLOWED_ERR
+	    NO_MODIFICATION_ALLOWED_ERR
+	    NOT_FOUND_ERR
+	    NOT_SUPPORTED_ERR
+	    INUSE_ATTRIBUTE_ERR
+	    INVALID_STATE_ERR
+	    SYNTAX_ERR
+	    INVALID_MODIFICATION_ERR
+	    NAMESPACE_ERR
+	    INVALID_ACCESS_ERR
+	   );
 
 ############# Class : XML::Xerces::PerlContentHandler ##############
 package XML::Xerces::PerlContentHandler;
@@ -162,7 +182,7 @@ EOT
 
 sub reset_errors {}
 
-package XML::Xerces::DOM_NodeList;
+package XML::Xerces::DOMNodeList;
 # convert the NodeList to a perl list
 sub to_list {
   my $self = shift;
@@ -197,7 +217,7 @@ sub to_hash {
   return %hash;
 }
 
-package XML::Xerces::DOM_NamedNodeMap;
+package XML::Xerces::DOMNamedNodeMap;
 # convert the NamedNodeMap to a perl hash
 sub to_hash {
   my $self = shift;
@@ -209,7 +229,7 @@ sub to_hash {
   return @list;
 }
 
-package XML::Xerces::DOM_Node;
+package XML::Xerces::DOMNode;
 sub to_hash {
   my $self = shift;
   return ($self->getNodeName,$self->getNodeValue);
@@ -227,7 +247,7 @@ sub quote_content {
   return $node_value;
 }
 
-package XML::Xerces::DOM_Entity;
+package XML::Xerces::DOMEntity;
 sub to_hash {
   my $self = shift;
   if ($self->hasChildNodes) {
@@ -238,12 +258,12 @@ sub to_hash {
   }
 }
 
-package XML::Xerces::DOM_Text;
+package XML::Xerces::DOMText;
 sub serialize {
   return $_[0]->quote_content($_[0]->getNodeValue);
 }
 
-package XML::Xerces::DOM_ProcessingInstruction;
+package XML::Xerces::DOMProcessingInstruction;
 sub serialize {
   my $output .= '<?' . $_[0]->getNodeName;
   if (length(my $str = $_[0]->getNodeValue)) {
@@ -253,7 +273,7 @@ sub serialize {
   return $output;
 }
 
-package XML::Xerces::DOM_Document;
+package XML::Xerces::DOMDocument;
 sub serialize {
   my $output;
   my $indent = 2;
@@ -266,7 +286,7 @@ sub serialize {
   return "$output\n";
 }
 
-package XML::Xerces::DOM_Element;
+package XML::Xerces::DOMElement;
 sub serialize {
   my ($self,$indent) = @_;
   my $output;
@@ -298,7 +318,7 @@ sub serialize {
   return $output;
 }
 
-package XML::Xerces::DOM_EntityReference;
+package XML::Xerces::DOMEntityReference;
 sub serialize {
   my ($self) = @_;
   my $output;
@@ -311,17 +331,17 @@ sub serialize {
   return $output;
 }
 
-package XML::Xerces::DOM_CDATASection;
+package XML::Xerces::DOMCDATASection;
 sub serialize {
   return '<![CDATA[' . $_[0]->getNodeValue . ']]>';
 }
 
-package XML::Xerces::DOM_Comment;
+package XML::Xerces::DOMComment;
 sub serialize {
   return '<!--' . $_[0]->getNodeValue . "-->\n";
 }
 
-package XML::Xerces::DOM_DocumentType;
+package XML::Xerces::DOMDocumentType;
 sub serialize {
   my $output;
   $output .= '<!DOCTYPE ' . $_[0]->getNodeName;
@@ -344,7 +364,7 @@ sub serialize {
   return $output;
 }
 
-package XML::Xerces::DOM_Entity;
+package XML::Xerces::DOMEntity;
 sub serialize {
   my $output;
   $output .= '<!ENTITY ' . $_[0]->getNodeName;
@@ -358,7 +378,7 @@ sub serialize {
   return $output;
 }
 
-package XML::Xerces::DOM_DOMException;
+package XML::Xerces::DOMException;
 sub getMessage {
   return shift->{msg};
 }
@@ -367,39 +387,14 @@ sub getCode {
   return shift->{code};
 }
 
-package XML::Xerces::DOM_Node;
-use Carp;
-sub isNull {
-  carp("using DOM_Node::isNULL() is depricated");
-  return 0;
-}
-
-sub actual_cast {
-  carp("using DOM_Node::actual_cast() is depricated");
-  return $_[0];
-}
-
-package XML::Xerces::DOM_Document;
-use Carp;
-sub createDocument {
-  carp("using DOM_Document::createDocument() is depricated");
-  return undef;
-}
-
-package XML::Xerces::DOMParser;
-use Carp;
-sub setToCreateXMLDeclTypeNode {
-  carp("using DOMParser::setToCreateXMLDeclTypeNode() is depricated");
-}
-
-package XML::Xerces::DOM_Element;
+package XML::Xerces::DOMElement;
 sub get_text {
   my $node = shift;
   my @nodes = $node->getChildNodes();
   my $text;
   foreach (@nodes) {
     $text .= $_->getNodeValue()
-      if $_->isa('XML::Xerces::DOM_Text');
+      if $_->isa('XML::Xerces::DOMText');
   }
   return $text;
 }

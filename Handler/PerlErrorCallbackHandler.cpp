@@ -1,12 +1,32 @@
 #include <stdlib.h>
 #include "PerlErrorCallbackHandler.hpp"
 
+PerlErrorCallbackHandler::PerlErrorCallbackHandler()
+{
+    callbackObj = NULL;
+}
+
+PerlErrorCallbackHandler::~PerlErrorCallbackHandler()
+{
+    if (callbackObj != NULL) {
+	SvREFCNT_dec(callbackObj);
+	callbackObj = NULL;
+    }
+}
+
+PerlErrorCallbackHandler::PerlErrorCallbackHandler(SV *obj)
+{
+    set_callback_obj(obj);
+}
+
 SV*
 PerlErrorCallbackHandler::set_callback_obj(SV* object) {
     SV *oldRef = &PL_sv_undef;	// default to 'undef'
     if (callbackObj != NULL) {
 	oldRef = callbackObj;
-	SvREFCNT_dec(oldRef);
+#if defined(PERL_VERSION) && PERL_VERSION >= 8
+//	SvREFCNT_dec(oldRef);
+#endif
     }
     SvREFCNT_inc(object);
     callbackObj = object;

@@ -67,9 +67,8 @@
 ######################################################################
 
 use strict;
-# use blib;
+use blib;
 use XML::Xerces;
-use XML::Xerces::DOMParse;
 use Getopt::Long;
 use vars qw();
 
@@ -87,7 +86,7 @@ Options:
   * = Default if not provided explicitly
 
 EOU
-my $VERSION = q[$Id: DOMPrint.pl,v 1.9 2002/03/25 00:47:18 jasons Exp $];
+my $VERSION = q[$Id: DOMPrint.pl,v 1.11 2002/10/19 23:01:12 jasons Exp $];
 my %OPTIONS;
 my $rc = GetOptions(\%OPTIONS,
 		    'v=s',
@@ -106,11 +105,11 @@ my $schema = $OPTIONS{s} || 0;
 my $validate = $OPTIONS{v} || 'auto';
 
 if (uc($validate) eq 'ALWAYS') {
-  $validate = $XML::Xerces::DOMParser::Val_Always;
+  $validate = $XML::Xerces::AbstractDOMParser::Val_Always;
 } elsif (uc($validate) eq 'NEVER') {
-  $validate = $XML::Xerces::DOMParser::Val_Never;
+  $validate = $XML::Xerces::AbstractDOMParser::Val_Never;
 } elsif (uc($validate) eq 'AUTO') {
-  $validate = $XML::Xerces::DOMParser::Val_Auto;
+  $validate = $XML::Xerces::AbstractDOMParser::Val_Auto;
 } else {
   die("Unknown value for -v: $validate\n$USAGE");
 }
@@ -119,7 +118,7 @@ if (uc($validate) eq 'ALWAYS') {
 # Parse and print
 #
 
-my $parser = XML::Xerces::DOMParser->new();
+my $parser = XML::Xerces::XercesDOMParser->new();
 $parser->setValidationScheme ($validate);
 $parser->setDoNamespaces ($namespace);
 $parser->setCreateEntityReferenceNodes(1);
@@ -127,23 +126,16 @@ $parser->setDoSchema ($schema);
 
 my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
 $parser->setErrorHandler($ERROR_HANDLER);
-eval {
-  $parser->parse (XML::Xerces::LocalFileInputSource->new($file));
-};
-if ($@) {
-  if (ref $@) {
-    die $@->getMessage();
-  } else {
-    die $@;
-  }
+eval {$parser->parse ($file)};
+XML::Xerces::error($@) if ($@);
+
+my $doc = $parser->getDocument();
+
+my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
+my $writer = $impl->createDOMWriter();
+if ($writer->canSetFeature('format-pretty-print',1)) {
+  $writer->setFeature('format-pretty-print',1);
 }
-my $doc = $parser->getDocument ();
-
-XML::Xerces::DOMParse::unformat ($doc);
-XML::Xerces::DOMParse::format ($doc);
-XML::Xerces::DOMParse::print (\*STDOUT, $doc);
-exit(0);
-
-__END__
-print STDOUT $doc->serialize();
+my $target = XML::Xerces::StdOutFormatTarget->new();
+$writer->writeNode($target,$doc);
 

@@ -7,21 +7,21 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..2\n"; }
-END {print "not ok 1\n" unless $loaded;}
+END {ok(0) unless $loaded;}
+
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 2;
 use Config;
 
 use lib 't';
-use TestUtils qw(result $SAMPLE_DIR);
-use vars qw($i $loaded $file);
+use TestUtils qw($SAMPLE_DIR);
+use vars qw($loaded $file);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -29,20 +29,26 @@ result($loaded);
 # (correspondingly "not ok 13") depending on the success of chunk 13
 # of the test code):
 
-my $document = q[<contributors>
-	<person Role="manager">
-		<name>Mike Pogue</name>
-		<email>mpogue@us.ibm.com</email>
-	</person>
-	<person Role="developer">
-		<name>Tom Watson</name>
-		<email>rtwatson@us.ibm.com</email>
-	</person>
-	<person Role="tech writer">
-		<name>Susan Hardenbrook</name>
-		<email>susanhar@us.ibm.com</email>
-	</person>
-</contributors>];
+my $document = q[<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<contributors>
+
+  <person Role="manager">
+    <name>Mike Pogue</name>
+    <email>mpogue@us.ibm.com</email>
+  </person>
+
+  <person Role="developer">
+    <name>Tom Watson</name>
+    <email>rtwatson@us.ibm.com</email>
+  </person>
+
+  <person Role="tech writer">
+    <name>Susan Hardenbrook</name>
+    <email>susanhar@us.ibm.com</email>
+  </person>
+
+</contributors>
+];
 
 $file = '.domprint.xml';
 open(OUT,">$file") or die "Couldn't open $file from writing";
@@ -52,6 +58,9 @@ close(OUT);
 my $perl = $Config{startperl};
 $perl =~ s/^\#!//;
 my $output = `$perl -Mblib $SAMPLE_DIR/DOMPrint.pl $file 2>/dev/null`;
-result($document eq $output);
+
+ok($document eq $output);
+diag("Found [$output]\n")
+  unless $document eq $output;
 
 END {unlink $file;}

@@ -1,12 +1,38 @@
 #include "xercesc/sax/InputSource.hpp"
 #include "PerlEntityResolverHandler.hpp"
 
+PerlEntityResolverHandler::PerlEntityResolverHandler()
+{
+    callbackObj = NULL;
+}
+
+PerlEntityResolverHandler::~PerlEntityResolverHandler()
+{
+    if (callbackObj != NULL) {
+	SvREFCNT_dec(callbackObj);
+	callbackObj = NULL;
+    }
+}
+
+PerlEntityResolverHandler::PerlEntityResolverHandler(SV *obj)
+{
+    if (!sv_isobject(obj)) {
+	croak("expect object");
+    }
+    if (!sv_derived_from(obj,"XML::Xerces::PerlEntityResolver")) {
+	croak("expect subclass of XML::Xerces::PerlEntityResolver");
+    }
+    set_callback_obj(obj);
+}
+
 SV*
 PerlEntityResolverHandler::set_callback_obj(SV* object) {
     SV *oldRef = &PL_sv_undef;	// default to 'undef'
     if (callbackObj != NULL) {
 	oldRef = callbackObj;
-	SvREFCNT_dec(oldRef);
+#if defined(PERL_VERSION) && PERL_VERSION >= 8
+//	SvREFCNT_dec(oldRef);
+#endif
     }
     SvREFCNT_inc(object);
     callbackObj = object;
@@ -58,8 +84,9 @@ PerlEntityResolverHandler::resolveEntity (const XMLCh* const publicId,
 	croak("EntityResolver did not retury an InputSource\n") ;
     }
 
-    if (SWIG_ConvertPtr(source_sv,(void **) &source, SWIGTYPE_p_InputSource) < 0) {
-        croak("EntityResolver did not retury an InputSource. Expected %s", SWIGTYPE_p_InputSource->name);
+    if (SWIG_ConvertPtr(source_sv,(void **) &source, SWIGTYPE_p_XERCES_CPP_NAMESPACE__InputSource,0) < 0) {
+
+        croak("EntityResolver did not retury an InputSource. Expected %s", SWIGTYPE_p_XERCES_CPP_NAMESPACE__InputSource->name);
     }
     PUTBACK ;
     FREETMPS;

@@ -4,22 +4,20 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..3\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
+# use blib;
 use XML::Xerces;
+use Test::More tests => 3;
 
 use lib 't';
-use TestUtils qw(result $DOM $PERSONAL $PERSONAL_FILE_NAME);
-use vars qw($i $loaded);
+use TestUtils qw($DOM $PERSONAL $PERSONAL_FILE_NAME);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -29,9 +27,9 @@ result($loaded);
 
 $DOM->parse( new XML::Xerces::LocalFileInputSource($PERSONAL_FILE_NAME) );
 
-# test that we get a subclass of DOM_Node back
+# test that we get a subclass of DOMNode back
 my $name = $DOM->getDocument->getElementsByTagName('link')->item(0);
-result(ref($name) && $name->isa('XML::Xerces::DOM_Node'));
+ok(ref($name) && $name->isa('XML::Xerces::DOMNode'));
 
 # test that it really is a subclass
-result(ref($name) ne 'XML::Xerces::DOM_Node');
+ok(ref($name) ne 'XML::Xerces::DOMNode');

@@ -4,30 +4,23 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..6\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 
 # use blib;
 use XML::Xerces;
+use Test::More tests => 6;
 
 use lib 't';
-use TestUtils qw(result $PERSONAL);
+use TestUtils qw($PERSONAL);
 use subs qw(warning error fatal_error);
-use vars qw($error $loaded $i);
+use vars qw($error $loaded);
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
-
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
 
 my $document = <<\END;
 <?xml version="1.0" encoding="iso-8859-1" standalone="no"?>
@@ -123,7 +116,7 @@ package main;
 {
   $error = "";
 
-  my $dom = XML::Xerces::DOMParser->new();
+  my $dom = XML::Xerces::XercesDOMParser->new();
 
   my $error_handler = MyErrorHandler->new();
   $dom->setErrorHandler($error_handler);
@@ -138,19 +131,19 @@ LINE:    22
 COLUMN:  11
 MESSAGE: Expected end of tag 'foo'
 EOE
-  result($expected_error eq $error);
+  ok($expected_error eq $error);
 
 }
 
 {
   $error = "";
 
-  my $dom = XML::Xerces::DOMParser->new();
+  my $dom = XML::Xerces::XercesDOMParser->new();
 
   my $error_handler = MyErrorHandler->new();
   $dom->setErrorHandler($error_handler);
 
-  $dom->setValidationScheme($XML::Xerces::DOMParser::Val_Always);
+  $dom->setValidationScheme($XML::Xerces::AbstractDOMParser::Val_Always);
   eval {
     $dom->parse(XML::Xerces::MemBufInputSource->new($document, 'foo') );
   };
@@ -161,24 +154,24 @@ LINE:    4
 COLUMN:  11
 MESSAGE: Unknown element 'personnel'
 EOE
-  result($expected_error eq $error);
+  ok($expected_error eq $error);
 }
 
 # test redefining the handler
 {
   $error = "";
 
-  my $dom = XML::Xerces::DOMParser->new();
+  my $dom = XML::Xerces::XercesDOMParser->new();
 
   my $error_handler = MyErrorHandler->new();
   my $error_handler2 = MyErrorHandler->new();
   my $tmp = $dom->setErrorHandler($error_handler);
-  result(!defined $tmp);
+  ok(!defined $tmp);
 
   $tmp = $dom->setErrorHandler($error_handler2);
-  result(defined $tmp, my $fail=1);
+  ok(defined $tmp);
 
-  $dom->setValidationScheme($XML::Xerces::DOMParser::Val_Always);
+  $dom->setValidationScheme($XML::Xerces::AbstractDOMParser::Val_Always);
   eval {
     $dom->parse(XML::Xerces::MemBufInputSource->new($document, 'foo') );
   };
@@ -189,6 +182,6 @@ LINE:    4
 COLUMN:  11
 MESSAGE: Unknown element 'personnel'
 EOE
-  result($expected_error eq $error);
+  ok($expected_error eq $error);
 }
 

@@ -4,18 +4,21 @@
 #include "PerlCallbackHandler.hpp"
 #include "xercesc/sax/DocumentHandler.hpp"
 #include "xercesc/util/XMLString.hpp"
+
+XERCES_CPP_NAMESPACE_USE
+
 class PerlDocumentCallbackHandler : public DocumentHandler
-				  , public  PerlCallbackHandler 
+//				  , public  PerlCallbackHandler 
 {
 
 protected:
-//    SV *callbackObj;
+    SV *callbackObj;
 
 public:
 
-    PerlDocumentCallbackHandler() {};
-    PerlDocumentCallbackHandler(SV *obj) : PerlCallbackHandler(obj){};
-    ~PerlDocumentCallbackHandler() {};
+    PerlDocumentCallbackHandler();
+    PerlDocumentCallbackHandler(SV *obj);
+    ~PerlDocumentCallbackHandler();
 
     SV* set_callback_obj(SV*);
 
@@ -27,7 +30,7 @@ public:
     void ignorableWhitespace(const XMLCh* const chars, 
 				const unsigned int length);
     void endElement(const XMLCh* const name);
-    void resetDocument(void);
+    void resetDocument();
     void startDocument();
     void endDocument();
     void processingInstruction (const XMLCh* const target,

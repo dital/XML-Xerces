@@ -65,46 +65,48 @@
 
 use strict;
 
+use blib;
 use XML::Xerces;
-use XML::Xerces::DOMParse;
 
 #
 # create a document
 #
 
-my $impl = XML::Xerces::DOM_DOMImplementation::getImplementation();
+my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
 my $dt = eval{$impl->createDocumentType('contributors', '', 'contributors.dtd')};
-error($@) if $@;
+XML::Xerces::error($@) if $@;
 my $doc = eval{$impl->createDocument('contributors', 'contributors',$dt)};
-error($@) if $@;
+XML::Xerces::error($@) if $@;
 
 my $root = $doc->getDocumentElement();
 
 $root->appendChild(CreatePerson(	
-	$doc, 
-	'Mike Pogue', 
-	'manager', 
+	$doc,
+	'Mike Pogue',
+	'manager',
 	'mpogue@us.ibm.com'
 ));
 
 $root->appendChild(CreatePerson(
-	$doc, 
-	'Tom Watson', 
-	'developer', 
+	$doc,
+	'Tom Watson',
+	'developer',
 	'rtwatson@us.ibm.com'
 ));
 
 $root->appendChild(CreatePerson(
-	$doc, 
-	'Susan Hardenbrook', 
-	'tech writer', 
+	$doc,
+	'Susan Hardenbrook',
+	'tech writer',
 	'susanhar@us.ibm.com'
 ));
 
-
-$XML::Xerces::DOMParse::INDENT = "  ";
-XML::Xerces::DOMParse::format ($doc);
-XML::Xerces::DOMParse::print (\*STDOUT, $doc);
+my $writer = $impl->createDOMWriter();
+if ($writer->canSetFeature('format-pretty-print',1)) {
+  $writer->setFeature('format-pretty-print',1);
+}
+my $target = XML::Xerces::StdOutFormatTarget->new();
+$writer->writeNode($target,$doc);
 
 
 #################################################################
@@ -140,20 +142,6 @@ sub SetEmail {
   $person->appendChild ($emailNode);
 }
 
-
-sub error {
-  my $error = shift;
-  print STDERR "Error in eval: ";
-  if (ref $error) {
-    print STDERR "msg: ", $error->getMessage();
-    if (ref $error eq 'XML::Xerces::DOM_DOMException') {
-      print STDERR "\n\tcode: ", $error->{code};
-    }
-  print STDERR "\n";
-  } else {
-    print STDERR $error;
-  }
-}
 
 __END__
 

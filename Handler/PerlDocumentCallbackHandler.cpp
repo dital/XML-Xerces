@@ -1,12 +1,32 @@
 #include <stdlib.h>
 #include "PerlDocumentCallbackHandler.hpp"
 
+PerlDocumentCallbackHandler::PerlDocumentCallbackHandler()
+{
+    callbackObj = NULL;
+}
+
+PerlDocumentCallbackHandler::~PerlDocumentCallbackHandler()
+{
+    if (callbackObj != NULL) {
+	SvREFCNT_dec(callbackObj);
+	callbackObj = NULL;
+    }
+}
+
+PerlDocumentCallbackHandler::PerlDocumentCallbackHandler(SV *obj)
+{
+    set_callback_obj(obj);
+}
+
 SV*
 PerlDocumentCallbackHandler::set_callback_obj(SV* object) {
     SV *oldRef = &PL_sv_undef;	// default to 'undef'
     if (callbackObj != NULL) {
 	oldRef = callbackObj;
-	SvREFCNT_dec(oldRef);
+#if defined(PERL_VERSION) && PERL_VERSION >= 8
+//	SvREFCNT_dec(oldRef);
+#endif
     }
     SvREFCNT_inc(object);
     callbackObj = object;

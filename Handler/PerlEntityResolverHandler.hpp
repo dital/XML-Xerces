@@ -3,21 +3,23 @@
 
 #include "PerlCallbackHandler.hpp"
 #include "xercesc/sax/EntityResolver.hpp"
+#include "xercesc/sax/InputSource.hpp"
 #include "xercesc/util/XMLString.hpp"
 
-class InputSource;
+XERCES_CPP_NAMESPACE_USE
+
 class PerlEntityResolverHandler: public EntityResolver
-			       , public  PerlCallbackHandler
+//			       , public  PerlCallbackHandler
  {
 
 protected:
-//    SV *callbackObj;
+    SV *callbackObj;
 
 public:
 
-    PerlEntityResolverHandler() {};
-    PerlEntityResolverHandler(SV *obj) : PerlCallbackHandler(obj) {};
-    ~PerlEntityResolverHandler() {};
+    PerlEntityResolverHandler();
+    PerlEntityResolverHandler(SV *obj);
+    ~PerlEntityResolverHandler();
 
     SV* set_callback_obj(SV*);
 

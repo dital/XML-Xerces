@@ -24,11 +24,10 @@ use Carp;
 use Cwd;
 require Exporter;
 
-@ISA = qw(Exporter);
+@ISA = qw(Exporter XML::Xerces::PerlEntityResolver);
 
-@EXPORT_OK = qw(result
-		is_object
-		error
+
+@EXPORT_OK = qw(error
 		$DOM
 		$CATALOG
 		$PERSONAL_FILE_NAME
@@ -48,7 +47,7 @@ BEGIN {
   # turn off annoying warnings
   $SIG{__WARN__} = 'IGNORE';
 
-  $DOM = new XML::Xerces::DOMParser;
+  $DOM = XML::Xerces::XercesDOMParser->new();
 
   my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
   $DOM->setErrorHandler($ERROR_HANDLER);
@@ -89,32 +88,6 @@ BEGIN {
   close PERSONAL;
 }
 
-sub is_object {
-  my ($obj) = @_;
-  my $ref = ref($obj);
-  return $ref
-    && $ref ne 'ARRAY'
-    && $ref ne 'SCALAR'
-    && $ref ne 'HASH'
-    && $ref ne 'CODE'
-    && $ref ne 'GLOB'
-    && $ref ne 'REF';
-}
-
-sub result {
-  my ($cond,$fail) = @_;
-  $fail = 0 unless defined $fail;
-  my $rc = ($cond xor $fail);
-  print STDOUT "not " if not $rc;
-  print STDOUT "ok ", $main::i;
-  if ($fail and $rc) {
-    print STDERR " Failed test $main::i as expected, no worries";
-  }
-  print STDOUT "\n";
-  $main::i++;
-  return $rc;
-}
-
 sub error {
   my $error = shift;
   print STDERR "Error in eval: ";
@@ -123,4 +96,54 @@ sub error {
   } else {
     print STDERR $error;
   }
+}
+
+sub new {
+  return bless {}, shift;
+}
+
+sub resolve_entity {
+  my ($self,$pub,$sys) = @_;
+#   print STDERR "Got PUBLIC: $pub\n";
+#   print STDERR "Got SYSTEM: $sys\n";
+  $main::test = 1;
+
+  # we parse the example XML Catalog
+  my $DOM = XML::Xerces::XercesDOMParser->new();
+  my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
+  $DOM->setErrorHandler($ERROR_HANDLER);
+  eval{$DOM->parse($CATALOG)};
+  if ($@) {
+    my $msg = "Resolver: Couldn't parse catalog:";
+    $@ = $@->getMessage()
+      if ref $@;
+    print STDERR "$msg $@\n";
+  }
+
+  # now retrieve the mappings
+  my $doc = $DOM->getDocument();
+  my @Maps = $doc->getElementsByTagName('Map');
+  my %Maps = map {($_->getAttribute('PublicId'),
+		   $_->getAttribute('HRef'))} @Maps;
+  my @Remaps = $doc->getElementsByTagName('Remap');
+  my %Remaps = map {($_->getAttribute('SystemId'),
+		     $_->getAttribute('HRef'))} @Remaps;
+
+  # now check which one we were asked for
+  my $href;
+  if ($pub) {
+    $href = $Maps{$pub};
+  } elsif ($sys) {
+    $href = $Remaps{$sys};
+  } else {
+    croak("Neither PublicId or SystemId were defined");
+  }
+  my $is = eval {XML::Xerces::LocalFileInputSource->new($href)};
+  if ($@) {
+    my $msg = "Resolver: Couldn't create input source for entity:";
+    $@ = $@->getMessage()
+      if ref $@;
+    print STDERR "$msg $@\n";
+  }
+  return $is;
 }

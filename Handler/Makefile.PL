@@ -3,8 +3,11 @@ WriteMakefile(
     'NAME'	=> 'Handler',
     'INC'       => $INCLUDES,
     'OBJECT'    => '$(O_FILES)',
-    'CFLAGS'   => $CFLAGS,
+    'CCFLAGS'   => $CFLAGS,
+    'CC'        => $CXX,
     'SKIP'      => [qw( dynamic test makeaperl xs_o)],
+  @OPTIMIZE,
+  @LDFLAGS,
 );
 
 __END__

@@ -4,18 +4,21 @@
 #include "PerlCallbackHandler.hpp"
 #include "xercesc/sax2/ContentHandler.hpp"
 #include "xercesc/util/XMLString.hpp"
-class PerlContentCallbackHandler : public ContentHandler
-				 , public PerlCallbackHandler 
+
+XERCES_CPP_NAMESPACE_USE
+
+class PerlContentCallbackHandler  : public ContentHandler
+//				 , public PerlCallbackHandler 
 {
 
 protected:
-//    SV *callbackObj;
+    SV *callbackObj;
 
 public:
 
-    PerlContentCallbackHandler() {};
-    PerlContentCallbackHandler(SV *obj) : PerlCallbackHandler(obj){};
-    ~PerlContentCallbackHandler() {};
+    PerlContentCallbackHandler();
+    PerlContentCallbackHandler(SV *obj);
+    ~PerlContentCallbackHandler();
 
     SV* set_callback_obj(SV*);
 

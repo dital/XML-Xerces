@@ -1,29 +1,28 @@
 # Before `make install' is performed this script should be runnable
 # with `make test'. After `make install' it should work as `perl
-# DOM_Document.t'
+# DOMDocument.t'
 
 ######################### We start with some black magic to print on failure.
 
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..35125\n"; }
-END {print "not ok 1\n" unless $loaded;}
+END {ok(0) unless $loaded;}
+
 use Carp;
 
 # use blib;
 use utf8;
 use XML::Xerces;
+use Test::More tests => 35125;
 use Config;
 
 use lib 't';
-use TestUtils qw(result is_object);
-use vars qw($i $loaded);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -32,7 +31,7 @@ result($loaded);
 # of the test code):
 
 # Create a couple of identical test documents
-my $document = q[<?xml version="1.0" encoding="utf-8"?>
+my $document = q[<?xml version="1.0" encoding="UTF-8"?>
 <contributors>
 	<person Role="manager">
 		<name>Mike Pogue</name>
@@ -48,12 +47,12 @@ my $document = q[<?xml version="1.0" encoding="utf-8"?>
 	</person>
 </contributors>];
 
-my $DOM1 = new XML::Xerces::DOMParser;
+my $DOM1 = new XML::Xerces::XercesDOMParser;
 my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
 $DOM1->setErrorHandler($ERROR_HANDLER);
 $DOM1->parse(XML::Xerces::MemBufInputSource->new($document));
 
-my $DOM2 = new XML::Xerces::DOMParser;
+my $DOM2 = new XML::Xerces::XercesDOMParser;
 $DOM2->setErrorHandler($ERROR_HANDLER);
 $DOM2->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'));
 
@@ -72,7 +71,7 @@ eval {
   my $copy = $doc1->importNode($persons1[0],0);
   $root1->appendChild($copy);
 };
-result(!$@ &&
+ok(!$@ &&
        scalar @persons1 < scalar ($root1->getElementsByTagName('person'))
       );
 
@@ -80,23 +79,23 @@ result(!$@ &&
 eval {
   my $el = $doc1->createElement('?');
 };
-result($@
-       && $@->{code} == $XML::Xerces::DOM_DOMException::INVALID_CHARACTER_ERR
+ok($@
+       && $@->{code} == $XML::Xerces::DOMException::INVALID_CHARACTER_ERR
       );
 
 # check that an element can't start with a digit
 eval {
   my $el = $doc1->createElement('9');
 };
-result($@
-       && $@->{code} == $XML::Xerces::DOM_DOMException::INVALID_CHARACTER_ERR
+ok($@
+       && $@->{code} == $XML::Xerces::DOMException::INVALID_CHARACTER_ERR
       );
 
 # check that getElementById() doesn't segfault on undef ID
 eval {
   $doc1->getElementById(undef);
 };
-result($@);
+ok($@);
 
 # check that an element can have a digit if a valid character comes first
 eval {
@@ -106,7 +105,7 @@ if ($@) {
   if (ref($@)) {
     if ($@->isa('XML::Xerces::XMLException')) {
       die "Couldn't open letter.xml: ", $@->getMessage();
-    } elsif ($@->isa('XML::Xerces::DOM_DOMException')) {
+    } elsif ($@->isa('XML::Xerces::DOMException')) {
       die "Couldn't open letter.xml: msg=<$@->{msg}>, code=$@->{code}";
     }
   }
@@ -136,7 +135,7 @@ foreach my $char (@digits) {
       print STDERR $@;
     }
   }
-  result(!$@) || printf("char: <0x%.4X>\n",ord($char));
+  ok(!$@) || printf("char: <0x%.4X>\n",ord($char));
 }
 
 my ($extender_node) = $doc1->getElementsByTagName('extender');
@@ -162,7 +161,7 @@ foreach my $char (@extenders) {
       print STDERR $@;
     }
   }
-  result(!$@) || printf("char: <0x%.4X>\n",ord($char));
+  ok(!$@) || printf("char: <0x%.4X>\n",ord($char));
 }
 
 my ($combining_char_node) = $doc1->getElementsByTagName('combiningchar');
@@ -188,7 +187,7 @@ foreach my $char (@combining_chars) {
       print STDERR $@;
     }
   }
-  result(!$@) || printf("char: <0x%.4X>\n",ord($char));
+  ok(!$@) || printf("char: <0x%.4X>\n",ord($char));
 }
 
 my ($letter_node) = $doc1->getElementsByTagName('letter');
@@ -216,7 +215,7 @@ foreach my $char (@letters) {
       print STDERR $@;
     }
   }
-  result(!$@) || printf("char: <0x%.4X>\n",ord($char));
+  ok(!$@) || printf("char: <0x%.4X>\n",ord($char));
 }
 
 my ($ideograph_node) = $doc1->getElementsByTagName('ideographic');
@@ -244,7 +243,7 @@ foreach my $char (@ideographs) {
       print STDERR $@;
     }
   }
-  result(!$@) || printf("char: <0x%.4X>\n",ord($char));
+  ok(!$@) || printf("char: <0x%.4X>\n",ord($char));
 }
 $XML::Xerces::DEBUG_UTF8_IN = 0;
 $XML::Xerces::DEBUG_UTF8_OUT = 0;
@@ -253,10 +252,10 @@ $XML::Xerces::DEBUG_UTF8_OUT = 0;
 eval {
   my $el = $doc1->createElement('_');
 };
-result(!$@);
+ok(!$@);
 
 # check that an element can start with an colon
 eval {
   my $el = $doc1->createElement(':');
 };
-result(!$@);
+ok(!$@);

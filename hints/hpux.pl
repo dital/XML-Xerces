@@ -12,6 +12,6 @@ if ($Config{gccversion}) {
   $self->{CCFLAGS} .= " -DHAS_BOOL";
   # we add -lcl to get thread local storage
   # see: http://forums.itrc.hp.com/cm/QuestionAnswer/1,,0x0d0a6d96588ad4118fef0090279cd0f9,00.html
-  push(@{$self->{LIBS}},'-lcl');
+  $self->{LIBS}->[0] .= ' -lcl';
 
 }

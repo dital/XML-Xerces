@@ -23,6 +23,25 @@ Samples:
 
 Internals:
 ==========
+Mon Jun  2 11:04:34 MDT 2003
+* make a fatal error if someone is using the wrong version of Xerces-C
+
+Fri Oct 11 21:57:23 MDT 2002
+* the %typecheck for XMLCh* is too greedy, it shouldn't happen later
+  in the typecheck process
+
+Fri Jun  7 00:37:01 MDT 2002
+* make entity resolver to find all the xml files
+
+Sun Jun  2 11:38:11 MDT 2002
+Fixed ==> * move transcoder initialization from postSource.pl to an
+  %init block
+Fixed ==> * use SWIG macro for multiple methods which use same exception
+* use %newobject and %typemape(newfree) for methods like removeNode()
+* look into use %feature("shadow") instead of having stuff in
+  postModule.pl
+* look into using SWIG_RegisterMapping() instead of inheritance hack
+
 Mon Mar 25 00:37:58 MST 2002
 Fixed ==> * callbacks for DOM_NodeFilter
 Fixed ==> * test for TreeWalker

@@ -84,7 +84,7 @@ Options:
 
 EOU
 
-my $VERSION = q[$Id: SAXCount.pl,v 1.6 2001/10/10 20:08:58 jasons Exp $ ];
+my $VERSION = q[$Id: SAXCount.pl,v 1.7 2002/08/27 19:33:20 jasons Exp $ ];
 my %OPTIONS;
 my $rc = GetOptions(\%OPTIONS,
 		    'v=s',
@@ -157,13 +157,8 @@ my $t0 = new Benchmark;
 eval {
   $parser->parse (XML::Xerces::LocalFileInputSource->new($file));
 };
-if ($@) {
-  if (ref $@) {
-    die $@->getMessage();
-  } else {
-    die $@;
-  }
-}
+XML::Xerces::error($@) if ($@);
+
 my $t1 = new Benchmark;
 my $td = timediff($t1, $t0);
 

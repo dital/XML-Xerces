@@ -2,24 +2,27 @@
 #define __PERLNODEFILTERCALLBACKHANDLER
 
 #include "PerlCallbackHandler.hpp"
-#include "xercesc/idom/IDOM_NodeFilter.hpp"
-class PerlNodeFilterCallbackHandler : public IDOM_NodeFilter
-				    , public  PerlCallbackHandler
+#include "xercesc/dom/DOMNodeFilter.hpp"
+
+XERCES_CPP_NAMESPACE_USE
+
+class PerlNodeFilterCallbackHandler : public DOMNodeFilter
+//				    , public  PerlCallbackHandler
 {
 
 protected:
-//    SV *callbackObj;
+    SV *callbackObj;
 
 public:
 
-    PerlNodeFilterCallbackHandler() {};
-    PerlNodeFilterCallbackHandler(SV *obj) : PerlCallbackHandler(obj){};
-    ~PerlNodeFilterCallbackHandler() {};
+    PerlNodeFilterCallbackHandler();
+    PerlNodeFilterCallbackHandler(SV *obj);
+    ~PerlNodeFilterCallbackHandler();
 
     SV* set_callback_obj(SV*);
 
 	// The NodeFilter interface
-    short acceptNode (const IDOM_Node* node) const;
+    short acceptNode (const DOMNode* node) const;
 };
 
 #endif __PERLNODEFILTERCALLBACKHANDLER

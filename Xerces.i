@@ -1,4 +1,5 @@
-%module Xerces
+%module "XML::Xerces"
+//#pragma SWIG nowarn=401
 %{
 #include "stdio.h"
 #include "string.h"
@@ -20,21 +21,28 @@
 #include "xercesc/util/QName.hpp"
 #include "xercesc/util/HexBin.hpp"
 #include "xercesc/util/Base64.hpp"
-#include "xercesc/parsers/IDOMParser.hpp"
+#include "xercesc/parsers/AbstractDOMParser.hpp"
+#include "xercesc/parsers/XercesDOMParser.hpp"
 #include "xercesc/parsers/SAXParser.hpp"
-#include "xercesc/idom/IDOM.hpp"
+#include "xercesc/dom/DOM.hpp"
 #include "xercesc/framework/LocalFileInputSource.hpp"
 #include "xercesc/framework/MemBufInputSource.hpp"
 #include "xercesc/framework/StdInInputSource.hpp"
 #include "xercesc/framework/URLInputSource.hpp"
 #include "xercesc/framework/XMLValidator.hpp"
+#include "xercesc/framework/XMLFormatter.hpp"
+#include "xercesc/framework/MemBufFormatTarget.hpp"
+#include "xercesc/framework/StdOutFormatTarget.hpp"
 #include "xercesc/validators/common/Grammar.hpp"
 
 #include "PerlErrorCallbackHandler.hpp"
-#include "PerlEntityResolverHandler.i"
-#include "PerlNodeFilterCallbackHandler.i"
 #include "PerlDocumentCallbackHandler.hpp"
 #include "PerlContentCallbackHandler.hpp"
+
+#include "PerlEntityResolverHandler.i"
+#include "PerlNodeFilterCallbackHandler.i"
+
+XERCES_CPP_NAMESPACE_USE
 
 // we initialize the static UTF-8 transcoding info
 // these are used by the typemaps to convert between
@@ -47,6 +55,14 @@ static XMLTranscoder* ISO_8859_1_TRANSCODER  = NULL;
 
 static bool DEBUG_UTF8_OUT = 0;
 static bool DEBUG_UTF8_IN = 0;
+
+static char debug_char[2048];
+static XMLCh debug_xml[2048];
+
+char*
+debugPrint(const XMLCh* str){
+    return (char*)XMLString::transcode(str);
+}
 
 // These exception creation methods make the Xerces.C code *much* smaller
 void
@@ -63,24 +79,24 @@ makeXMLException(const XMLException& e){
     SV *error = ERRSV;
     SvSetSV(error,tmpsv);
     (void)SvUPGRADE(error, SVt_PV);
-    Perl_die(Nullch);
+    croak(Nullch);
 }
 
 void
-makeIDOMException(const IDOM_DOMException& e){
+makeDOMException(const DOMException& e){
     SV *tmpsv;
     HV *hash = newHV();
-    char *IDOM_EXCEPTION = "XML::Xerces::DOM_DOMException";
-    HV *IDOM_EXCEPTION_STASH = gv_stashpv(IDOM_EXCEPTION, FALSE);
+    char *DOM_EXCEPTION = "XML::Xerces::DOMException";
+    HV *DOM_EXCEPTION_STASH = gv_stashpv(DOM_EXCEPTION, FALSE);
     hv_magic(hash, 
 	     (GV *)sv_setref_pv(sv_newmortal(), 
-				IDOM_EXCEPTION, (void *)&e), 
+				DOM_EXCEPTION, (void *)&e), 
 	     'P');
-    tmpsv = sv_bless(newRV_noinc((SV *)hash), IDOM_EXCEPTION_STASH);
+    tmpsv = sv_bless(newRV_noinc((SV *)hash), DOM_EXCEPTION_STASH);
     SV *error = ERRSV;
     SvSetSV(error,tmpsv);
     (void)SvUPGRADE(error, SVt_PV);
-    Perl_die(Nullch);
+    croak(Nullch);
 }
 
 void
@@ -97,7 +113,7 @@ makeSAXNotRecognizedException(const SAXNotRecognizedException& e){
     SV *error = ERRSV;
     SvSetSV(error,tmpsv);
     (void)SvUPGRADE(error, SVt_PV);
-    Perl_die(Nullch);
+    croak(Nullch);
 }
 
 void
@@ -114,7 +130,7 @@ makeSAXNotSupportedException(const SAXNotSupportedException& e){
     SV *error = ERRSV;
     SvSetSV(error,tmpsv);
     (void)SvUPGRADE(error, SVt_PV);
-    Perl_die(Nullch);
+    croak(Nullch);
 }
 
 %}
@@ -131,54 +147,32 @@ bool DEBUG_UTF8_IN;
 
 %include typemaps.i
 
-/*******************/
-/*                 */
-/*  INCLUDE FILES  */
-/*                 */
-/*******************/
+/*****************************/
+/*                           */
+/*  Platforms and Compilers  */
+/*                           */
+/*****************************/
 
-%import "xercesc/sax2/DeclHandler.hpp"
-%import "xercesc/sax/Parser.hpp"
-%import "xercesc/framework/XMLDocumentHandler.hpp"
-%import "xercesc/framework/XMLErrorReporter.hpp"
-%import "xercesc/framework/XMLEntityHandler.hpp"
-%import "xercesc/validators/DTD/DocTypeHandler.hpp"
+#ifdef XML_LINUX
+%import "xercesc/util/Platforms/Linux/LinuxDefs.hpp"
+#endif
 
+#ifdef XML_MACOSX
+%import "xercesc/util/Platforms/MacOS/MacOSDefs.hpp"
+#endif
 
+#ifdef XML_GCC
+%import "xercesc/util/Compilers/GCCDefs.hpp" 
+#endif
 
-%pragma nodefault
-
-// We have to define these in order to get past the occurrence of the
-// macro in class declaration line
-#define SAX_EXPORT
-#define PLATFORM_EXPORT
-#define PLATFORM_IMPORT
-#define PARSERS_EXPORT
-#define CDOM_EXPORT
-#define SAX2_EXPORT
-#define XMLUTIL_EXPORT
-#define PARSERS_EXPORT
-#define XMLPARSER_EXPORT
-#define VALIDATORS_EXPORT
-
-/* 
- * FOR ERROR HANDLING and other callbacks  
- */
-
-%rename(PerlErrorCallbackHandler__constructor__arg) PerlErrorCallbackHandler::PerlErrorCallbackHandler(SV*);
-%rename(PerlNodeFilterCallbackHandler__constructor__arg) PerlNodeFilterCallbackHandler::PerlNodeFilterCallbackHandler(SV*);
-%rename(PerlContentCallbackHandler__constructor__arg) PerlContentCallbackHandler::PerlContentCallbackHandler(SV*);
-%rename(PerlDocumentCallbackHandler__constructor__arg) PerlDocumentCallbackHandler::PerlDocumentCallbackHandler(SV*);
-%rename(PerlEntityResolverHandler__constructor__arg) PerlEntityResolverHandler::PerlEntityResolverHandler(SV*);
-
-%include "PerlCallbackHandler.swig.hpp"
+%import "xercesc/util/XercesDefs.hpp"
 
 /*
  * The generic exception handler
  */
 %exception {
     try {
-        $function
+        $action
     } 
     catch (const XMLException& e)
         {
@@ -186,7 +180,6 @@ bool DEBUG_UTF8_IN;
         }
     catch (...)
         {
-            XMLPlatformUtils::Terminate();
             croak("%s", "Handling Unknown exception");
         }
 }
@@ -203,8 +196,13 @@ bool DEBUG_UTF8_IN;
 
 // both of these static variables cause trouble
 // the transcoding service is only useful to C++ anyway.
-%ignore XMLPlatformUtils::fgTransService;
-%ignore XMLPlatformUtils::fgNetAccessor;
+%ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgTransService;
+%ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgNetAccessor;
+
+// these are other static variables that are useless to Perl
+%ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgUserPanicHandler;
+%ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgDefaultPanicHandler;
+%ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgMemoryManager;
 
 %ignore openFile(const XMLCh* const);
 %include "xercesc/util/PlatformUtils.hpp"
@@ -212,99 +210,117 @@ bool DEBUG_UTF8_IN;
 /*
  * Utility Classes
  */
-%rename(XMLURL__constructor__base) XMLURL::XMLURL(const   XMLCh* const, const XMLCh* const);
+
+/*
+%rename(XMLURL__constructor__base) XMLURL::XMLURL(const   XMLCh* const, 
+						  const XMLCh* const);
 %rename(XMLURL__constructor__text) XMLURL::XMLURL(const XMLCh* const);
 %rename(XMLURL__constructor__copy) XMLURL::XMLURL(const XMLURL&);
-%rename(XMLURL__constructor__url_base) XMLURL::XMLURL(const XMLURL&,const XMLCh* const);
+%rename(XMLURL__constructor__url_base) XMLURL::XMLURL(const XMLURL&,
+						      const XMLCh* const);
 %rename(makeRelativeTo__overload__XMLURL) XMLURL::makeRelativeTo(const XMLURL&);
-%rename(setURL__overload__string) XMLURL::setURL(const XMLCh* const,const XMLCh* const);
-%rename(setURL__overload__XMLURL) XMLURL::setURL(const XMLURL&,const XMLCh* const);
-%ignore XMLURL::XMLURL(const XMLURL&,const char* const);
-%ignore XMLURL::XMLURL(const char* const);
-%ignore XMLURL::XMLURL(const XMLCh* const, const char* const);
+%rename(setURL__overload__string) XMLURL::setURL(const XMLCh* const,
+						 const XMLCh* const);
+%rename(setURL__overload__XMLURL) XMLURL::setURL(const XMLURL&,
+						 const XMLCh* const);
+*/
+
+%ignore XMLURL(const XMLURL&,const char* const);
+%ignore XMLURL(const char* const);
+%ignore XMLURL(const XMLCh* const, const char* const);
 %include "xercesc/util/XMLURL.hpp"
 
-%rename(XMLUri__constructor__uri) XMLUri::XMLUri(const XMLCh* const);
+// %rename(XMLUri__constructor__uri) XMLUri::XMLUri(const XMLCh* const);
 %include "xercesc/util/XMLUri.hpp"
 
 // I want to add these eventually, but for now, I want to eliminate
 // the warnings
 
-%ignore QName::QName(const XMLCh *const ,const XMLCh *const , const unsigned int);
-%ignore QName::QName(const XMLCh *const ,const unsigned int);
-%ignore QName::QName(const QName *const );
-%ignore QName::setName(const XMLCh *const ,const unsigned int );
+%ignore QName(const XMLCh *const,const XMLCh *const,const unsigned int);
+%ignore QName(const XMLCh *const ,const unsigned int);
+%ignore QName(const QName *const );
+%ignore XERCES_CPP_NAMESPACE::QName::setName(const XMLCh *const,const unsigned int);
 
-%ignore Base64::decode(const XMLCh *const ,unsigned int *);
+%ignore XERCES_CPP_NAMESPACE::Base64::decode(const XMLCh *const ,unsigned int *);
 
-%ignore XMLValidator::emitError(const XMLValid::Codes ,const XMLCh *const ,const XMLCh *const ,const XMLCh *const ,const XMLCh *const );
-%ignore XMLValidator::emitError( const XMLValid::Codes , const char *const , const char *const , const char *const , const char *const );
+%ignore XERCES_CPP_NAMESPACE::XMLValidator::emitError(const XMLValid::Codes,const XMLCh *const,
+				const XMLCh *const,const XMLCh *const,
+				const XMLCh *const );
 
-%ignore SAXException::SAXException(const XMLCh *const );
-%ignore SAXException::SAXException(const char *const );
-%ignore SAXException::SAXException(const SAXException &);
-%ignore SAXNotSupportedException::SAXNotSupportedException(const XMLCh *const );
-%ignore SAXNotSupportedException::SAXNotSupportedException(const char *const );
-%ignore SAXNotSupportedException::SAXNotSupportedException(const SAXException &);
-%ignore SAXNotRecognizedException::SAXNotRecognizedException(const XMLCh *const );
-%ignore SAXNotRecognizedException::SAXNotRecognizedException(const char *const );
-%ignore SAXNotRecognizedException::SAXNotRecognizedException(const SAXException &);
-
-%ignore SAXParseException::SAXParseException(const XMLCh *const ,const XMLCh *const ,const XMLCh *const ,const unsigned int ,const unsigned int );
-%ignore SAXParseException::SAXParseException(const SAXParseException &);
-
+// These are just char* versions and should be ignored
+%ignore XERCES_CPP_NAMESPACE::XMLValidator::emitError(const XMLValid::Codes, const char *const,
+				const char *const, const char *const,
+				const char *const );
+%ignore XERCES_CPP_NAMESPACE::SAXException::SAXException(const char *const );
+%ignore XERCES_CPP_NAMESPACE::SAXNotSupportedException::SAXNotSupportedException(const char *const);
+%ignore XERCES_CPP_NAMESPACE::SAXNotRecognizedException::SAXNotRecognizedException(const char *const);
+%ignore XERCES_CPP_NAMESPACE::DOMBuilder::parseURI(const char *const ,const bool );
+%ignore XERCES_CPP_NAMESPACE::SAXParser::setExternalSchemaLocation(const char *const );
+%ignore XERCES_CPP_NAMESPACE::SAXParser::setExternalNoNamespaceSchemaLocation(const char *const );
 
 
-%ignore IDOM_Document::createElementNS(const XMLCh *,const XMLCh *,const int ,const int );
+// %ignore SAXException::SAXException(const XMLCh *const );
+// %ignore SAXException::SAXException(const SAXException &);
+// %ignore SAXNotSupportedException::SAXNotSupportedException(const XMLCh *const);
+// %ignore SAXNotSupportedException::SAXNotSupportedException(const SAXException&);
+// %ignore SAXNotRecognizedException::SAXNotRecognizedException(const XMLCh *const);
+// %ignore SAXNotRecognizedException::SAXNotRecognizedException(const SAXException&);
+// 
+// %ignore SAXParseException::SAXParseException(const XMLCh *const ,
+// 					     const XMLCh *const ,
+// 					     const XMLCh *const ,
+// 					     XMLSSize_t const ,
+// 					     XMLSSize_t const );
+// %ignore SAXParseException::SAXParseException(const SAXParseException &);
+// 
+// %ignore DOMDocument::createElementNS(const XMLCh *,const XMLCh *,const int,
+// 				     const int);
+// 
+// %ignore DOMException::DOMException(short ,const XMLCh *);
+// %ignore DOMException::DOMException(const DOMException &);
+// 
+// %ignore DOMImplementation::createDocument();
+// 
+// %ignore DOMRangeException::DOMRangeException(RangeExceptionCode,
+// 					       const XMLCh *);
+// %ignore DOMRangeException::DOMRangeException(const DOMRangeException&);
+// 
+// %ignore XMLPScanToken::XMLPScanToken(const XMLPScanToken&);
+// 
+// %ignore SAX2XMLReader::parse(const XMLCh *const );
+// 
+// %ignore SAXParser::getDocumentHandler() const;
+// %ignore SAXParser::getEntityResolver() const;
+// %ignore SAXParser::getErrorHandler() const;
+// 
+// %ignore Grammar::getElemDecl(const unsigned int ) const;
+// %ignore Grammar::putElemDecl(XMLElementDecl *const ) const;
+// %ignore Grammar::getElemDecl(const unsigned int ,const XMLCh *const ,const XMLCh *const ,unsigned int );
+// %ignore Grammar::getElemDecl(const unsigned int );
+// %ignore Grammar::getNotationDecl(const XMLCh *const );
+// 
+// %ignore DOMDocument::createElementNS(const XMLCh *,const XMLCh *,
+// 				     XMLSSize_t const ,XMLSSize_t const );
+// %ignore DOMImplementation::createDocument();
+// %ignore DOMRangeException::DOMRangeException(RangeExceptionCode ,
+// 					     const XMLCh *);
+// %ignore DOMRangeException::DOMRangeException(const DOMRangeException &);
+// %ignore DOMBuilder::getErrorHandler() const;
+// %ignore DOMBuilder::getErrorHandler();
+// %ignore DOMBuilder::getEntityResolver();
+// %ignore DOMBuilder::getFilter();
 
-%ignore IDOM_DOMException::IDOM_DOMException(short ,const XMLCh *);
-%ignore IDOM_DOMException::IDOM_DOMException( const IDOM_DOMException &);
-
-%ignore IDOM_DOMImplementation::createDocument();
-
-%ignore IDOM_RangeException::IDOM_RangeException(RangeExceptionCode ,const XMLCh *);
-%ignore IDOM_RangeException::IDOM_RangeException( const IDOM_RangeException &);
-
-%ignore XMLPScanToken::XMLPScanToken( const XMLPScanToken &);
-
-%ignore SAX2XMLReader::parse(const XMLCh *const );
-%ignore SAX2XMLReader::parse(const char *const );
-
-%ignore SAXParser::setExternalSchemaLocation(const char *const );
-%ignore SAXParser::setExternalNoNamespaceSchemaLocation(const char *const );
-
-%ignore SAXParser::getDocumentHandler() const;
-%ignore SAXParser::getEntityResolver() const;
-%ignore SAXParser::getErrorHandler() const;
-%ignore IDOMParser::getErrorHandler() const;
-%ignore IDOMParser::getEntityResolver() const;
-%ignore Grammar::getElemDecl(const unsigned int ) const;
-%ignore Grammar::putElemDecl(XMLElementDecl *const ) const;
-
-%ignore IDOMParser::setExternalSchemaLocation(const char *const );
-%ignore IDOMParser::setExternalNoNamespaceSchemaLocation(const char *const );
-
-%ignore Grammar::getElemDecl(const unsigned int ,const XMLCh *const ,const XMLCh *const ,unsigned int );
-%ignore Grammar::getElemDecl(const unsigned int );
-%ignore Grammar::getNotationDecl(const XMLCh *const );
 
 // These are just const versions of the others, and should be ignored
-%ignore getPrefix() const;
-%ignore getLocalPart() const;
-%ignore getURI() const;
-%ignore getRawName() const;
+%ignore XERCES_CPP_NAMESPACE::QName::getPrefix() const;
+%ignore XERCES_CPP_NAMESPACE::QName::getLocalPart() const;
+%ignore XERCES_CPP_NAMESPACE::QName::getURI() const;
+%ignore XERCES_CPP_NAMESPACE::QName::getRawName() const;
 %include "xercesc/util/QName.hpp"
 
 // although not really necessary for Perl, why not?
 %include "xercesc/util/HexBin.hpp"
 %include "xercesc/util/Base64.hpp"
-
-// do we need these Unicode string constants?
-// %include "xercesc/util/XMLUni.hpp"
-
-// does anyone want to use this class for formatting Unicode?
-// %include "xercesc/framework/XMLFormatter.hpp"
-
 
 // Perl has no need for these methods
 // %include "xercesc/util/XMLStringTokenizer.hpp"
@@ -333,34 +349,33 @@ bool DEBUG_UTF8_IN;
 /* 
  * FOR SAX 1.0 API 
  */
+
 %include "xercesc/sax/SAXException.hpp"
 %include "xercesc/sax/SAXParseException.hpp"
 %include "xercesc/sax/ErrorHandler.hpp"
 %include "xercesc/sax/DTDHandler.hpp"
 %include "xercesc/sax/DocumentHandler.hpp"
 %include "xercesc/sax/EntityResolver.hpp"
-%rename(getType__overload__index) AttributeList::getType(const unsigned int) const;
-%ignore AttributeList::getValue(const XMLCh* const) const;
-%rename(getValue__overload__index) AttributeList::getValue(const unsigned int) const;
+
+%rename(getType__overload__name) XERCES_CPP_NAMESPACE::AttributeList::getType(const XMLCh* const) const;
+%rename(getValue__overload__name) XERCES_CPP_NAMESPACE::AttributeList::getValue(const XMLCh* const) const;
+
 %include "xercesc/sax/AttributeList.hpp"
+
 %include "xercesc/sax/HandlerBase.hpp"
 %include "xercesc/sax/Locator.hpp"
 
 /* 
  * FOR SAX 2.0 API 
  */
-%rename(getType__overload__qname) Attributes::getType(const XMLCh* const) const;
-%rename(getType__overload__index) Attributes::getType(const unsigned int) const;
-%rename(getValue__overload__qname) Attributes::getValue(const XMLCh* const) const;
-%rename(getValue__overload__index) Attributes::getValue(const unsigned int) const;
-%rename(getIndex__overload__qname) Attributes::getIndex(const XMLCh* const) const;
+%rename(getType__overload__name) XERCES_CPP_NAMESPACE::Attributes::getType(const XMLCh* const) const;
+%rename(getValue__overload__name) XERCES_CPP_NAMESPACE::Attributes::getValue(const XMLCh* const) const;
+
 %include "xercesc/sax2/Attributes.hpp"
 %include "xercesc/sax2/ContentHandler.hpp"
 %include "xercesc/sax2/LexicalHandler.hpp"
+%include "xercesc/sax2/DeclHandler.hpp"
 %include "xercesc/sax2/DefaultHandler.hpp"
-// the overloaded factory method is useless for perl
-%ignore createXMLReader(const XMLCh*);
-%include "xercesc/sax2/XMLReaderFactory.hpp"
 
 /* 
  * INPUT SOURCES 
@@ -372,65 +387,79 @@ bool DEBUG_UTF8_IN;
 %include "xercesc/framework/MemBufInputSource.hpp"
 %include "xercesc/framework/StdInInputSource.hpp"
 
-%rename(LocalFileInputSource__constructor__base) LocalFileInputSource(const XMLCh* const,const XMLCh* const);
+// %rename(LocalFileInputSource__constructor__base) LocalFileInputSource(const XMLCh* const,const XMLCh* const);
 %include "xercesc/framework/LocalFileInputSource.hpp"
 
-%rename(URLInputSource__constructor__pub) URLInputSource(const XMLCh* const,const XMLCh* const,const XMLCh* const);
-%rename(URLInputSource__constructor__sys) URLInputSource(const XMLCh* const,const XMLCh* const);
+// %rename(URLInputSource__constructor__pub) URLInputSource(const XMLCh* const,const XMLCh* const,const XMLCh* const);
+// %rename(URLInputSource__constructor__sys) URLInputSource(const XMLCh* const,const XMLCh* const);
 %ignore URLInputSource(const XMLCh* const,const char* const, const char* const);
 %ignore URLInputSource(const XMLCh* const,const char* const);
 %include "xercesc/framework/URLInputSource.hpp"
+
+%ignore XMLFormatter::XMLFormatter(char const *const,XMLFormatTarget *const,
+				   EscapeFlags const,UnRepFlags const);
+%ignore operator <<;
+
+//
+// Format Targets for DOMWriter
+//
+%include "xercesc/framework/XMLFormatter.hpp"
+%include "xercesc/framework/MemBufFormatTarget.hpp"
+%include "xercesc/framework/StdOutFormatTarget.hpp"
+
+// Unicode string constants for XML Formatter
+%include "xercesc/util/XMLUni.hpp"
 
 //
 // XMLScanner support
 //
 
 // ignore the constructors for now
-%ignore XMLScanner::XMLScanner;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::XMLScanner;
 
 // ignore all versions of the following for now
-%ignore XMLScanner::emitError;
-%ignore XMLScanner::getURIText;
-%ignore XMLScanner::scanDocument;
-%ignore XMLScanner::scanFirst;
-%ignore XMLScanner::setExternalNoNamespaceSchemaLocation;
-%ignore XMLScanner::setExternalSchemaLocation;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::emitError;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getURIText;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::scanDocument;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::scanFirst;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::setExternalNoNamespaceSchemaLocation;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::setExternalSchemaLocation;
 
 // ignore these specific ones for now
-%ignore XMLScanner::getDocHandler() const;
-%ignore XMLScanner::getDocHandler();
-%ignore XMLScanner::getDocTypeHandler() const;
-%ignore XMLScanner::getDocTypeHandler();
-%ignore XMLScanner::getDoNamespaces() const;
-%ignore XMLScanner::getValidationScheme() const;
-%ignore XMLScanner::getDoSchema() const;
-%ignore XMLScanner::getValidationSchemaFullChecking() const;
-%ignore XMLScanner::getEntityHandler() const;
-%ignore XMLScanner::getEntityHandler();
-%ignore XMLScanner::getErrorReporter() const;
-%ignore XMLScanner::getErrorReporter();
-%ignore XMLScanner::getExitOnFirstFatal() const;
-%ignore XMLScanner::getValidationConstraintFatal() const;
-%ignore XMLScanner::getIDRefList();
-%ignore XMLScanner::getIDRefList() const;
-%ignore XMLScanner::getInException() const;
-%ignore XMLScanner::getLastExtLocation    (XMLCh* const, const unsigned int,
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocHandler() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocHandler();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocTypeHandler() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocTypeHandler();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDoNamespaces() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationScheme() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDoSchema() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationSchemaFullChecking() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityHandler() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityHandler();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorReporter() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorReporter();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getExitOnFirstFatal() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationConstraintFatal() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getIDRefList();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getIDRefList() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getInException() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getLastExtLocation    (XMLCh* const, const unsigned int,
 					   XMLCh* const, const unsigned int,
 					   unsigned int&, unsigned int&);
-%ignore XMLScanner::getLocator() const;
-%ignore XMLScanner::getStandalone() const;
-%ignore XMLScanner::getValidator() const;
-%ignore XMLScanner::getValidator();
-%ignore XMLScanner::getErrorCount();
-%ignore XMLScanner::getEntityDecl(const XMLCh* const) const;
-%ignore XMLScanner::getEntityEnumerator() const;
-%ignore XMLScanner::getEntityDeclPool();
-%ignore XMLScanner::getEntityDeclPool() const;
-%ignore XMLScanner::getURIStringPool() const;
-%ignore XMLScanner::getURIStringPool();
-%ignore XMLScanner::getHasNoDTD() const;
-%ignore XMLScanner::getExternalSchemaLocation() const;
-%ignore XMLScanner::getExternalNoNamespaceSchemaLocation() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getLocator() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getStandalone() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidator() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidator();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorCount();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityDecl(const XMLCh* const) const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityEnumerator() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityDeclPool();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityDeclPool() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getURIStringPool() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getURIStringPool();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getHasNoDTD() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getExternalSchemaLocation() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getExternalNoNamespaceSchemaLocation() const;
 
 %include "xercesc/internal/XMLScanner.hpp"
 
@@ -440,12 +469,6 @@ bool DEBUG_UTF8_IN;
  */
 // scan token helper class for progressive parsing
 %include "xercesc/framework/XMLPScanToken.hpp"
-
-// Overloaded methods
-%rename(parse__overload__is) parse(const InputSource&, const bool);
-%ignore parse(const XMLCh* const,const bool);
-%rename(parseFirst__overload__is) parseFirst(const InputSource&, XMLPScanToken &, const bool);
-%ignore parseFirst(const XMLCh *const ,XMLPScanToken &,const bool );
 
 /*
  * methods not needed by the public Parser interfaces
@@ -496,10 +519,39 @@ bool DEBUG_UTF8_IN;
 %ignore startExtSubset;
 %ignore TextDecl;
 
-// %include "xercesc/sax/Parser.hpp"
-%exception SAX2XMLReader::setProperty {
+// These are char* versions of XMLCh* methods, and should be ignored
+%ignore XERCES_CPP_NAMESPACE::SAX2XMLReader::parse(const char *const );
+%ignore XERCES_CPP_NAMESPACE::AbstractDOMParser::setExternalSchemaLocation(const char* const);
+%ignore XERCES_CPP_NAMESPACE::AbstractDOMParser::setExternalNoNamespaceSchemaLocation(const char* const);
+%ignore parse(const char* const, const bool);
+%ignore parseFirst(const char *const,XMLPScanToken&,const bool);
+
+// These are just const versions of the others, and should be ignored
+%ignore XERCES_CPP_NAMESPACE::XercesDOMParser::getErrorHandler() const;
+%ignore XERCES_CPP_NAMESPACE::XercesDOMParser::getEntityResolver() const;
+
+// Overloaded methods
+
+// %rename(parse__overload__is) parse(const InputSource&, const bool);
+// %rename(parseFirst__overload__is) parseFirst(const InputSource&, 
+// 					     XMLPScanToken &, const bool);
+
+//
+// The abstract base classes for Parsers
+// 
+%include "xercesc/sax/Parser.hpp"
+%include "xercesc/framework/XMLDocumentHandler.hpp"
+%include "xercesc/framework/XMLErrorReporter.hpp"
+%include "xercesc/framework/XMLEntityHandler.hpp"
+%include "xercesc/validators/DTD/DocTypeHandler.hpp"
+
+//
+// define the exceptions for SAX2XMLReader
+//
+%define SAXEXCEPTION(method)
+%exception method {
     try {
-        $function
+        $action
     } 
     catch (const XMLException& e)
         {
@@ -515,173 +567,183 @@ bool DEBUG_UTF8_IN;
 	}
     catch (...)
         {
-            XMLPlatformUtils::Terminate();
             croak("%s", "Handling Unknown exception");
         }
 }
+%enddef
 
-%exception SAX2XMLReader::setFeature {
-    try {
-        $function
-    } 
-    catch (const XMLException& e)
-        {
-	    makeXMLException(e);
-        }
-    catch (const SAXNotSupportedException& e)
-	{
-	    makeSAXNotSupportedException(e);
-	}
-    catch (const SAXNotRecognizedException& e)
-	{
-	    makeSAXNotRecognizedException(e);
-	}
-    catch (...)
-        {
-            XMLPlatformUtils::Terminate();
-            croak("%s", "Handling Unknown exception");
-        }
-}
+SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getFeature)
+SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::setFeature)
+SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::setProperty)
+SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getProperty)
 
-%exception SAX2XMLReader::getProperty {
-    try {
-        $function
-    } 
-    catch (const XMLException& e)
-        {
-	    makeXMLException(e);
-        }
-    catch (const SAXNotSupportedException& e)
-	{
-	    makeSAXNotSupportedException(e);
-	}
-    catch (const SAXNotRecognizedException& e)
-	{
-	    makeSAXNotRecognizedException(e);
-	}
-    catch (...)
-        {
-            XMLPlatformUtils::Terminate();
-            croak("%s", "Handling Unknown exception");
-        }
-}
+//
+// The Parsers classes
+// 
 
-%exception SAX2XMLReader::getFeature {
-    try {
-        $function
-    } 
-    catch (const XMLException& e)
-        {
-	    makeXMLException(e);
-        }
-    catch (const SAXNotSupportedException& e)
-	{
-	    makeSAXNotSupportedException(e);
-	}
-    catch (const SAXNotRecognizedException& e)
-	{
-	    makeSAXNotRecognizedException(e);
-	}
-    catch (...)
-        {
-            XMLPlatformUtils::Terminate();
-            croak("%s", "Handling Unknown exception");
-        }
-}
-
+// the overloaded factory method is useless for perl
+%ignore createXMLReader(const XMLCh*);
 %include "xercesc/sax2/SAX2XMLReader.hpp"
-%include "xercesc/parsers/SAXParser.hpp"
+%include "xercesc/sax2/XMLReaderFactory.hpp"
 
-%rename(DOMParser) IDOMParser;
-%include "xercesc/parsers/IDOMParser.hpp"
+%include "xercesc/parsers/SAXParser.hpp"
 
 %include "xercesc/validators/common/Grammar.hpp"
 
 /* 
- * THE NEW DOM IMPLEMENATION 
+ * DOM
  */
 
-// the IDOM classes gets a special exception handler
+// the DOM classes gets a special exception handler
 %exception {
     try {
-        $function
+        $action
     } 
     catch (const XMLException& e)
         {
 	    makeXMLException(e);
         }
-    catch (const IDOM_DOMException& e)
+    catch (const DOMException& e)
 	{
-	    makeIDOMException(e);
+	    makeDOMException(e);
 	}
     catch (...)
         {
-            XMLPlatformUtils::Terminate();
             croak("%s", "Handling Unknown exception");
         }
 }
 
-//
-// we rename all the IDOM* classes to DOM* instead
-//
-%rename(DOM_Node) IDOM_Node;
-%rename(DOM_Attr) IDOM_Attr;
-%rename(DOM_CharacterData) IDOM_CharacterData;
-%rename(DOM_Text) IDOM_Text;
-%rename(DOM_CDATASection) IDOM_CDATASection;
-%rename(DOM_Comment) IDOM_Comment;
-%rename(DOM_Document) IDOM_Document;
-%rename(DOM_DocumentFragment) IDOM_DocumentFragment;
-%rename(DOM_DocumentType) IDOM_DocumentType;
-%rename(DOM_DOMException) IDOM_DOMException;
-%rename(DOM_DOMImplementation) IDOM_DOMImplementation;
-%rename(DOM_Element) IDOM_Element;
-%rename(DOM_Entity) IDOM_Entity;
-%rename(DOM_EntityReference) IDOM_EntityReference;
-%rename(DOM_NamedNodeMap) IDOM_NamedNodeMap;
-%rename(DOM_NodeFilter) IDOM_NodeFilter;
-%rename(DOM_NodeIterator) IDOM_NodeIterator;
-%rename(DOM_NodeList) IDOM_NodeList;
-%rename(DOM_Notation) IDOM_Notation;
-%rename(DOM_ProcessingInstruction) IDOM_ProcessingInstruction;
-%rename(DOM_Range) IDOM_Range;
-%rename(DOM_RangeException) IDOM_RangeException;
-%rename(DOM_TreeWalker) IDOM_TreeWalker;
+// Introduced in DOM Level 1
+%include "xercesc/dom/DOMException.hpp"
 
-%include "xercesc/idom/IDOM_Node.hpp"
-%include "xercesc/idom/IDOM_Attr.hpp"
-%include "xercesc/idom/IDOM_CharacterData.hpp"
-%include "xercesc/idom/IDOM_Text.hpp"
-%include "xercesc/idom/IDOM_CDATASection.hpp"
-%include "xercesc/idom/IDOM_Comment.hpp"
-%include "xercesc/idom/IDOM_Document.hpp"
-%include "xercesc/idom/IDOM_DocumentFragment.hpp"
-%include "xercesc/idom/IDOM_DocumentType.hpp"
-%include "xercesc/idom/IDOM_DOMException.hpp"
-%include "xercesc/idom/IDOM_DOMImplementation.hpp"
-%include "xercesc/idom/IDOM_Element.hpp"
-%include "xercesc/idom/IDOM_Entity.hpp"
-%include "xercesc/idom/IDOM_EntityReference.hpp"
-%include "xercesc/idom/IDOM_NamedNodeMap.hpp"
-%include "xercesc/idom/IDOM_NodeFilter.hpp"
-%include "xercesc/idom/IDOM_NodeIterator.hpp"
-%include "xercesc/idom/IDOM_NodeList.hpp"
-%include "xercesc/idom/IDOM_Notation.hpp"
-%include "xercesc/idom/IDOM_ProcessingInstruction.hpp"
-%include "xercesc/idom/IDOM_Range.hpp"
-%include "xercesc/idom/IDOM_RangeException.hpp"
-%include "xercesc/idom/IDOM_TreeWalker.hpp"
+// Introduced in DOM Level 2
+%include "xercesc/dom/DOMDocumentRange.hpp"
+%include "xercesc/dom/DOMDocumentTraversal.hpp"
+%include "xercesc/dom/DOMNodeFilter.hpp"
+%include "xercesc/dom/DOMNodeIterator.hpp"
+%include "xercesc/dom/DOMRange.hpp"
+%include "xercesc/dom/DOMRangeException.hpp"
+%include "xercesc/dom/DOMTreeWalker.hpp"
 
-%addmethods IDOM_Node {
-   bool operator==(const IDOM_Node &other) {
-       return self == &other;
+%ignore XERCES_CPP_NAMESPACE::DOMImplementation::loadDOMExceptionMsg;
+
+// Introduced in DOM Level 1
+%include "xercesc/dom/DOMNode.hpp"
+%include "xercesc/dom/DOMAttr.hpp"
+%include "xercesc/dom/DOMCharacterData.hpp"
+%include "xercesc/dom/DOMText.hpp"
+%include "xercesc/dom/DOMCDATASection.hpp"
+%include "xercesc/dom/DOMComment.hpp"
+%include "xercesc/dom/DOMDocument.hpp"
+%include "xercesc/dom/DOMDocumentFragment.hpp"
+%include "xercesc/dom/DOMDocumentType.hpp"
+%include "xercesc/dom/DOMImplementationLS.hpp"
+%include "xercesc/dom/DOMImplementation.hpp"
+%include "xercesc/dom/DOMElement.hpp"
+%include "xercesc/dom/DOMEntity.hpp"
+%include "xercesc/dom/DOMEntityReference.hpp"
+%include "xercesc/dom/DOMNamedNodeMap.hpp"
+%include "xercesc/dom/DOMNodeList.hpp"
+%include "xercesc/dom/DOMNotation.hpp"
+%include "xercesc/dom/DOMProcessingInstruction.hpp"
+
+// Introduced in DOM Level 3
+// Experimental - subject to change
+%include "xercesc/dom/DOMBuilder.hpp"
+%include "xercesc/dom/DOMImplementationLS.hpp"
+%include "xercesc/dom/DOMImplementationRegistry.hpp"
+%include "xercesc/dom/DOMImplementationSource.hpp"
+%include "xercesc/dom/DOMInputSource.hpp"
+%include "xercesc/dom/DOMLocator.hpp"
+%include "xercesc/dom/DOMWriter.hpp"
+%include "xercesc/dom/DOMWriterFilter.hpp"
+
+%include "xercesc/parsers/AbstractDOMParser.hpp"
+%include "xercesc/parsers/XercesDOMParser.hpp"
+
+%extend XERCES_CPP_NAMESPACE::DOMDocument {
+   DOMNode * toDOMNode() {
+     return (DOMNode*) self;
    }
-   bool operator!=(const IDOM_Node &other) {
-       return self != &other;
+   DOMDocumentTraversal * toDOMDocumentTraversal() {
+     return (DOMDocumentTraversal*) self;
    }
 };
 
+%extend XERCES_CPP_NAMESPACE::DOMNode {
+   bool operator==(const DOMNode *other) {
+       return self->isSameNode(other);
+   }
+   bool operator!=(const DOMNode *other) {
+       return !self->isSameNode(other);
+   }
+};
+
+/* 
+ * FOR ERROR HANDLING and other callbacks - this needs to be at the very end
+ *   so that SWIG can wrap the superclass methods properly
+ */
+
+// %rename(PerlErrorCallbackHandler__constructor__arg) PerlErrorCallbackHandler::PerlErrorCallbackHandler(SV*);
+// %rename(PerlNodeFilterCallbackHandler__constructor__arg) PerlNodeFilterCallbackHandler::PerlNodeFilterCallbackHandler(SV*);
+// %rename(PerlContentCallbackHandler__constructor__arg) PerlContentCallbackHandler::PerlContentCallbackHandler(SV*);
+// %rename(PerlDocumentCallbackHandler__constructor__arg) PerlDocumentCallbackHandler::PerlDocumentCallbackHandler(SV*);
+// %rename(PerlEntityResolverHandler__constructor__arg) PerlEntityResolverHandler::PerlEntityResolverHandler(SV*);
+
+%ignore PerlErrorCallbackHandler::warning(const SAXParseException&);
+%ignore PerlErrorCallbackHandler::error(const SAXParseException&);
+%ignore PerlErrorCallbackHandler::fatalError(const SAXParseException&);
+
+%import "PerlCallbackHandler.hpp"
+%include "PerlErrorCallbackHandler.hpp"
+%include "PerlDocumentCallbackHandler.hpp"
+%include "PerlContentCallbackHandler.hpp"
+
+%ignore PerlEntityResolverHandler::resolveEntity (const XMLCh* const, 
+						 const XMLCh* const);
+%include "PerlEntityResolverHandler.hpp"
+
+%ignore PerlNodeFilterCallbackHandler::acceptNode (const DOMNode*) const;
+%include "PerlNodeFilterCallbackHandler.hpp"
+
+/* 
+ * Include extra verbatim C code in the initialization function
+ */
+%init {
+    // we create the global transcoder for UTF-8 to UTF-16
+    XMLTransService::Codes failReason;
+    XMLPlatformUtils::Initialize(); // first we must create the transservice
+    UTF8_ENCODING = XMLString::transcode("UTF-8");
+    UTF8_TRANSCODER =
+      XMLPlatformUtils::fgTransService->makeNewTranscoderFor(UTF8_ENCODING,
+                                                             failReason,
+                                                             1024,
+							     XMLPlatformUtils::fgMemoryManager);
+    if (! UTF8_TRANSCODER) {
+	croak("ERROR: XML::Xerces: INIT: Could not create UTF-8 transcoder");
+    }
+
+
+    ISO_8859_1_ENCODING = XMLString::transcode("ISO-8859-1");
+    ISO_8859_1_TRANSCODER =
+      XMLPlatformUtils::fgTransService->makeNewTranscoderFor(ISO_8859_1_ENCODING,
+                                                             failReason,
+                                                             1024,
+							     XMLPlatformUtils::fgMemoryManager);
+    if (! ISO_8859_1_TRANSCODER) {
+	croak("ERROR: XML::Xerces: INIT: Could not create ISO-8859-1 transcoder");
+    }
+
+}
+
+/* 
+ * Include extra verbatim Perl code
+ */
 %pragma(perl5) include="Xerces-extra.pm"
+
+/* 
+ * Include extra verbatim Perl code immediately after Module header
+ */
 %pragma(perl5) code="package XML::Xerces; 
 use vars qw($VERSION @EXPORT);
-$VERSION = q[1.7.0-1];";
+$VERSION = q[2.3.0-1];";

@@ -83,7 +83,7 @@ Options:
   * = Default if not provided explicitly
 
 EOU
-my $VERSION = q[$Id: DOMCount.pl,v 1.12 2002/03/25 00:48:21 jasons Exp $ ];
+my $VERSION = q[$Id: DOMCount.pl,v 1.13 2002/08/27 19:33:19 jasons Exp $ ];
 
 my $rc = GetOptions(\%OPTIONS,
 		    'v=s',
@@ -102,11 +102,11 @@ my $schema = $OPTIONS{s} || 0;
 my $validate = $OPTIONS{v} || 'auto';
 
 if (uc($validate) eq 'ALWAYS') {
-  $validate = $XML::Xerces::DOMParser::Val_Always;
+  $validate = $XML::Xerces::AbstractDOMParser::Val_Always;
 } elsif (uc($validate) eq 'NEVER') {
-  $validate = $XML::Xerces::DOMParser::Val_Never;
+  $validate = $XML::Xerces::AbstractDOMParser::Val_Never;
 } elsif (uc($validate) eq 'AUTO') {
-  $validate = $XML::Xerces::DOMParser::Val_Auto;
+  $validate = $XML::Xerces::AbstractDOMParser::Val_Auto;
 } else {
   die("Unknown value for -v: $validate\n$USAGE");
 }
@@ -116,7 +116,7 @@ if (uc($validate) eq 'ALWAYS') {
 # Count the nodes
 #
 
-my $parser = XML::Xerces::DOMParser->new();
+my $parser = XML::Xerces::XercesDOMParser->new();
 $parser->setValidationScheme ($validate);
 $parser->setDoNamespaces ($namespace);
 $parser->setCreateEntityReferenceNodes(1);
@@ -129,13 +129,8 @@ my $t0 = new Benchmark;
 eval {
   $parser->parse ($file);
 };
-if ($@) {
-  if (ref $@) {
-    die $@->getMessage();
-  } else {
-    die $@;
-  }
-}
+XML::Xerces::error($@) if ($@);
+
 my $doc = $parser->getDocument ();
 my $element_count = $doc->getElementsByTagName("*")->getLength();
 my $t1 = new Benchmark;

@@ -1,27 +1,24 @@
 # Before `make install' is performed this script should be runnable
 # with `make test'. After `make install' it should work as `perl
-# DOM_Attr.t'
+# DOMAttr.t'
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..5\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
 use utf8;
 use XML::Xerces;
+use Test::More tests => 6;
 
 use lib 't';
-use TestUtils qw(result is_object $DOM $PERSONAL_FILE_NAME);
-use vars qw($i $loaded);
+use TestUtils qw($DOM $PERSONAL_FILE_NAME);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -29,28 +26,24 @@ result($loaded);
 # (correspondingly "not ok 13") depending on the success of chunk 13
 # of the test code):
 
-$DOM->parse($PERSONAL_FILE_NAME);
+eval{$DOM->parse($PERSONAL_FILE_NAME)};
+XML::Xerces::error($@) if $@;
 
 my $doc = $DOM->getDocument();
 my $doctype = $doc->getDoctype();
 my @persons = $doc->getElementsByTagName('person');
+ok(UNIVERSAL::isa($persons[0],'XML::Xerces::DOMElement'));
 
 # test getting the attribute node
 my $attr = $persons[0]->getAttributeNode('id');
-result(is_object($attr)
-       && $attr->isa('XML::Xerces::DOM_Attr')
-      );
+ok(UNIVERSAL::isa($attr,'XML::Xerces::DOMAttr'));
 
 # test getting the attribute value
-result($attr->getValue() eq $persons[0]->getAttribute('id'));
+ok($attr->getValue() eq $persons[0]->getAttribute('id'));
 
 # test that we can use integers and floats as values for setting attribtes
-eval {
-  $attr->setValue(3);
-};
-result(!$@);
+eval {$attr->setValue(3)};
+ok(!$@);
 
-eval {
-  $attr->setValue(.03);
-};
-result(!$@);
+eval {$attr->setValue(.03)};
+ok(!$@);

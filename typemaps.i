@@ -19,13 +19,7 @@
 /* CREATED IN THE in TYPEMAP TO POINT TO MEMORY THAT HOLDS THE          */
 /* CONVERSION.  THE MEMORY IS DYNAMIC, SO IT MUST BE FREED AFTER THE C  */
 /* FUNCTION THAT USES IT IS CALLED.  THIS IS DONE VIA A "freearg"       */
-/* TYPEMAP.  IT IS MAJORLY KLUDGY, BUT IT WORKS.                        */
-/*                                                                      */
-/* ONE PROBLEM:  A FEW XERCES FUNCTIONS TAKE MULTIPLE ARGUMENTS OF      */
-/* TYPE XMLCh STRING.  THEREFORE, A DIFFERENT TEMPORARY VARIABLE MUST   */
-/* BE USED FOR EACH ONE.  THIS IS ACCOMPLISHED BY MAKING SEPERATE       */
-/* in AND freearg TYPEMAPS FOR EACH ARGUMENT OF A GIVEN NAME. ONCE      */
-/* AGAIN, THIS IS KLUDGY, BUT IT WORKS.                                 */
+/* TYPEMAP.                                                             */
 /*                                                                      */
 /************************************************************************/
 
@@ -108,12 +102,8 @@ Perl2XMLString(SV* input){
 }
 %}
 
-/********************/
-/*                  */
-/* GENERIC ARGUMENT */
-/*                  */
-/********************/
-%typemap(perl5, in) XMLCh * {
+// in typemap
+%typemap(in) XMLCh * {
   if (SvPOK($input)||SvIOK($input)||SvNOK($input)) {
     $1 = Perl2XMLString($input);
   } else {
@@ -122,15 +112,12 @@ Perl2XMLString(SV* input){
   }
 }
 
-%typemap(perl5, freearg) XMLCh * {
+%typemap(freearg) XMLCh * {
   delete[] $1;
 }
 
-// 
-// RETURN VALUE OF getMessage METHOD ON A saxException (WHAT A 
-// perlErrorHandler) FUNCTION SUCH AS "warning" RECEIVES AS AN ARGUMENT
-// 
-%typemap(perl5, out) XMLCh * {
+// out typemap
+%typemap(out) XMLCh * {
   $result = XMLString2Perl($1);
   ++argvi;
 }
@@ -145,86 +132,102 @@ Perl2XMLString(SV* input){
 // CONSTRUCTOR
 // 
 
-%typemap(perl5, in) (const XMLByte* const srcDocBytes, unsigned int byteCount) {
+%typemap(in) (const XMLByte* const srcDocBytes, unsigned int byteCount) {
   if (SvPOK($input)||SvIOK($input)||SvNOK($input)) {
-    XMLByte *xmlbytes = (XMLByte *)SvPV($input, $2);
-    $1 = new XMLByte[$2];
-    memcpy($1, xmlbytes, $2);
+    STRLEN len;
+    XMLByte *xmlbytes = (XMLByte *)SvPV($input, len);
+    $2 = len;
+    $1 = new XMLByte[len];
+    memcpy($1, xmlbytes, len);
   } else {
     croak("Type error in argument 2 of $symname, Expected perl-string.");
     XSRETURN(1);
   }
 }
 
-// PERL SHOULD IGNORE THIS ARGUMENT -- CALCULATE IN KLUDGE ABOVE FOR MemBufInputSource 
-%typemap(perl5, ignore) const unsigned int byteCount {
-}
+// PERL SHOULD IGNORE THIS ARGUMENT 
+%typemap(in,numinputs=0) const unsigned int byteCount {}
 
 // 
 // FOR Perl*Handler MEMBER FUNCTIONS, SO PERL SCALAR DOESN'T GET WRAPPED 
-// BY SWIG
 // 
-%typemap(perl5, in) SV * {
+%typemap(in) SV * {
   $1 = $input;
+}
+
+// XMLByte arrays are just char*'s
+%apply char * {  XMLByte * }
+
+
+// The typecheck functions are for use by SWIG's auto-overloading support
+%typemap(typecheck, precedence=60)
+SV*
+{
+  $1 = SvOK($input) ? 1 : 0;
+}
+
+%typemap(typecheck, precedence=70)
+XMLCh*, const XMLCh* 
+{
+  $1 = SvPOK($input)||SvIOK($input)||SvNOK($input) ? 1 : 0;
 }
 
 //
 // IDOM_Node*
 //
 
-%typemap(out) IDOM_Node* {
-    swig_type_info *ty = SWIG_TypeDynamicCast($1_descriptor, (void **) &$1);
-    ST(argvi) = sv_newmortal();
-    SWIG_MakePtr(ST(argvi++), (void *) result, ty);
-}
+// %typemap(out) DOMNode* {
+//     swig_type_info *ty = SWIG_TypeDynamicCast($1_descriptor, (void **) &$1);
+//     ST(argvi) = sv_newmortal();
+//     SWIG_MakePtr(ST(argvi++), (void *) result, ty,0);
+// }
+%typemap(out) XERCES_CPP_NAMESPACE::DOMNode * = SWIGTYPE *DYNAMIC;
 
-// %typemap(out) IDOM_Node * = SWIGTYPE *DYNAMIC;
-
-DYNAMIC_CAST(SWIGTYPE_p_IDOM_Node, IDOM_Node_dynamic_cast);
+DYNAMIC_CAST(SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMNode, DOMNode_dynamic_cast);
 
 %{
 static swig_type_info *
-IDOM_Node_dynamic_cast(void **ptr) {
-   IDOM_Node **nptr = (IDOM_Node **) ptr;
+DOMNode_dynamic_cast(void **ptr) {
+   DOMNode **nptr = (DOMNode **) ptr;
    if (*nptr == NULL) {
        return NULL;
    }
    short int type = (*nptr)->getNodeType();
-   if (type == IDOM_Node::TEXT_NODE) {
-      return SWIGTYPE_p_IDOM_Text;
+   if (type == DOMNode::TEXT_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMText;
    }
-   if (type == IDOM_Node::PROCESSING_INSTRUCTION_NODE) {
-      return SWIGTYPE_p_IDOM_ProcessingInstruction;
+   if (type == DOMNode::PROCESSING_INSTRUCTION_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMProcessingInstruction;
    }
-   if (type == IDOM_Node::DOCUMENT_NODE) {
-      return SWIGTYPE_p_IDOM_Document;
+   if (type == DOMNode::DOCUMENT_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMDocument;
    }
-   if (type == IDOM_Node::ELEMENT_NODE) {
-      return SWIGTYPE_p_IDOM_Element;
+   if (type == DOMNode::ELEMENT_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMElement;
    }
-   if (type == IDOM_Node::ENTITY_REFERENCE_NODE) {
-      return SWIGTYPE_p_IDOM_EntityReference;
+   if (type == DOMNode::ENTITY_REFERENCE_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMEntityReference;
    }
-   if (type == IDOM_Node::CDATA_SECTION_NODE) {
-      return SWIGTYPE_p_IDOM_CDATASection;
+   if (type == DOMNode::CDATA_SECTION_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMCDATASection;
    }
-   if (type == IDOM_Node::CDATA_SECTION_NODE) {
-      return SWIGTYPE_p_IDOM_CDATASection;
+   if (type == DOMNode::CDATA_SECTION_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMCDATASection;
    }
-   if (type == IDOM_Node::COMMENT_NODE) {
-      return SWIGTYPE_p_IDOM_Comment;
+   if (type == DOMNode::COMMENT_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMComment;
    }
-   if (type == IDOM_Node::DOCUMENT_TYPE_NODE) {
-      return SWIGTYPE_p_IDOM_DocumentType;
+   if (type == DOMNode::DOCUMENT_TYPE_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMDocumentType;
    }
-   if (type == IDOM_Node::ENTITY_NODE) {
-      return SWIGTYPE_p_IDOM_Entity;
+   if (type == DOMNode::ENTITY_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMEntity;
    }
-   if (type == IDOM_Node::ATTRIBUTE_NODE) {
-      return SWIGTYPE_p_IDOM_Attr;
+   if (type == DOMNode::ATTRIBUTE_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMAttr;
    }
-   if (type == IDOM_Node::NOTATION_NODE) {
-      return SWIGTYPE_p_IDOM_Notation;
+   if (type == DOMNode::NOTATION_NODE) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMNotation;
    }
    return NULL;
 }

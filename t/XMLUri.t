@@ -4,23 +4,20 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
+END {ok(0) unless $loaded;}
 
-BEGIN { $| = 1; print "1..15\n"; }
-END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 15;
 
 use lib 't';
-use TestUtils qw(result is_object $DOM $PERSONAL_FILE_NAME);
-use vars qw($i $loaded);
+use TestUtils qw($DOM $PERSONAL_FILE_NAME);
+use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
@@ -43,9 +40,8 @@ if ($@) {
     if ref($@);
   die $@;
 }
-result($uri
-      && is_object($uri)
-      && $uri->isa('XML::Xerces::XMLUri'));
+ok($uri &&
+   UNIVERSAL::isa($uri,'XML::Xerces::XMLUri'));
 
 # test the constructor
 my $uri2;
@@ -57,34 +53,32 @@ if ($@) {
     if ref($@);
   die $@;
 }
-result($uri2
-      && is_object($uri2)
-      && $uri2->isa('XML::Xerces::XMLUri'));
+ok($uri2 && UNIVERSAL::isa($uri2,'XML::Xerces::XMLUri'));
 
-result($uri2->getScheme() eq $scheme);
+ok($uri2->getScheme() eq $scheme);
 $scheme = 'ftp';
 $uri2->setScheme($scheme);
-result($uri2->getScheme() eq $scheme);
+ok($uri2->getScheme() eq $scheme);
 
-result($uri2->getHost() eq $host);
+ok($uri2->getHost() eq $host);
 $host = 'www.openscience.org';
 $uri2->setHost($host);
-result($uri2->getHost() eq $host);
+ok($uri2->getHost() eq $host);
 
-result($uri2->getPath() eq $path);
+ok($uri2->getPath() eq $path);
 $path = '/test.pl';
 $uri2->setPath($path);
-result($uri2->getPath() eq $path);
+ok($uri2->getPath() eq $path);
 
-result($uri2->getPort() eq $port);
+ok($uri2->getPort() eq $port);
 $port = '4747';
 $uri2->setPort($port);
-result($uri2->getPort() eq $port);
+ok($uri2->getPort() eq $port);
 
-result($uri2->getQueryString() eq $query);
+ok($uri2->getQueryString() eq $query);
 $query = 'test=foo';
 $uri2->setQueryString($query);
-result($uri2->getQueryString() eq $query);
+ok($uri2->getQueryString() eq $query);
 
 $scheme = 'mailto';
 my $user = 'jasons';
@@ -96,8 +90,8 @@ if ($@) {
     if ref($@);
   die $@;
 }
-result($uri2->getUserInfo() eq $user);
+ok($uri2->getUserInfo() eq $user);
 
 $user = 'bob';
 $uri2->setUserInfo($user);
-result($uri2->getUserInfo() eq $user);
+ok($uri2->getUserInfo() eq $user);

@@ -4,52 +4,56 @@
 
 ######################### We start with some black magic to print on failure.
 
-# Change 1..1 below to 1..last_test_to_print .
-# (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..5\n"; }
-END {print "not ok 1\n" unless $loaded;}
+END {ok(0) unless $loaded;}
+
 use Carp;
 # use blib;
 use XML::Xerces;
+use Test::More tests => 6;
 use Cwd;
 
 use lib 't';
-use TestUtils qw(result is_object $DOM $PERSONAL_FILE_NAME $SAMPLE_DIR);
-use vars qw($i $loaded $error);
+use TestUtils qw($DOM $PERSONAL_NO_DOCTYPE_FILE_NAME $SAMPLE_DIR $PERSONAL_NO_DOCTYPE);
+use vars qw($loaded $error);
 use strict;
 
 $loaded = 1;
-$i = 1;
-result($loaded);
+ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
-# Insert your test code below (better if it prints "ok 13"
-# (correspondingly "not ok 13") depending on the success of chunk 13
-# of the test code):
-
-my $is = XML::Xerces::LocalFileInputSource->new($PERSONAL_FILE_NAME);
-result(is_object($is)
-       && $is->isa('XML::Xerces::InputSource')
-       && $is->isa('XML::Xerces::LocalFileInputSource')
-      );
+my $is = eval{XML::Xerces::LocalFileInputSource->new($PERSONAL_NO_DOCTYPE_FILE_NAME)};
+XML::Xerces::error($@) if $@;
+ok(UNIVERSAL::isa($is,'XML::Xerces::InputSource')
+   && $is->isa('XML::Xerces::LocalFileInputSource')
+  );
 
 # test that a bogus relative path causes an exception
-eval {
-  $is = XML::Xerces::LocalFileInputSource->new('../foo/bar.xml');
-};
-my $error = $@;
-result($error &&
-       is_object($error) &&
-       $error->isa('XML::Xerces::XMLException'));
+# 2003-06-10 JES: it seems that this has changed for 2.3 and 
+# now a fatal error is thrown at parse time instead
+#
+# $is = eval {XML::Xerces::LocalFileInputSource->new('../foo/bar.xml')};
+# my $error = $@;
+# ok($error &&
+#    UNIVERSAL::isa($error,'XML::Xerces::XMLException'));
 
 # test that relative paths work
-$is = XML::Xerces::LocalFileInputSource->new("$SAMPLE_DIR/personal.xml");
-result(is_object($is) && $is->isa('XML::Xerces::LocalFileInputSource'));
+$is = eval{XML::Xerces::LocalFileInputSource->new($PERSONAL_NO_DOCTYPE_FILE_NAME)};
+XML::Xerces::error($@) if $@;
+ok(UNIVERSAL::isa($is,'XML::Xerces::LocalFileInputSource'));
+
+eval{$DOM->parse($is)};
+XML::Xerces::error($@) if $@;
+my $serialize = $DOM->getDocument->serialize;
+ok($serialize eq $PERSONAL_NO_DOCTYPE);
 
 # test the overloaded constructor
-# this currently segfaults
 my $cwd = cwd();
-# $is = XML::Xerces::LocalFileInputSource->new($cwd, "$SAMPLE_DIR/personal.xml");
-result(is_object($is) && $is->isa('XML::Xerces::LocalFileInputSource'));
+$is = XML::Xerces::LocalFileInputSource->new($cwd, "$SAMPLE_DIR/personal-no-doctype.xml");
+ok(UNIVERSAL::isa($is,'XML::Xerces::LocalFileInputSource'));
+
+eval{$DOM->parse($is)};
+XML::Xerces::error($@) if $@;
+$serialize = $DOM->getDocument->serialize;
+ok($serialize eq $PERSONAL_NO_DOCTYPE);
