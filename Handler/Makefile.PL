@@ -4,7 +4,7 @@ WriteMakefile(
     'INC'       => $INCLUDES,
     'OBJECT'    => '$(O_FILES)',
     'CFLAGS'   => $CFLAGS,
-    'SKIP'      => [qw( test makeaperl xs_o)],
+    'SKIP'      => [qw( dynamic test makeaperl xs_o)],
 );
 
 __END__

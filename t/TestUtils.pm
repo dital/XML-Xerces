@@ -108,7 +108,7 @@ sub result {
   print STDOUT "not " if not $rc;
   print STDOUT "ok ", $main::i;
   if ($fail and $rc) {
-    print STDERR " Failed test $main::i as expected, no worries\n";
+    print STDERR " Failed test $main::i as expected, no worries";
   }
   print STDOUT "\n";
   $main::i++;

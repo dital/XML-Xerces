@@ -7,7 +7,7 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..26\n"; }
+BEGIN { $| = 1; print "1..27\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Carp;
 # use blib;
@@ -81,17 +81,13 @@ my $port = '2727';
 my $user = 'me';
 my $password = 'metoo';
 my $base = "$proto://$user:$password\@$host:$port/";
-my $path = '/test/samples.html';
+my $path = '/test/samples.pl';
+$query = 'bar';
 my $fragment = 'foo';
-my $xml_url3;
-eval {
-  $xml_url3 = XML::Xerces::XMLURL->new($base, "$path#$fragment");
-};
-if ($@) {
-  die $@->getMessage()
-    if ref($@);
-  die $@;
-}
+my $url_text = "$path?$query#$fragment";
+my $xml_url3 = eval{XML::Xerces::XMLURL->new($base, $url_text)};
+XML::Xerces::error($@) if $@;
+
 result(is_object($xml_url)
        && $xml_url->isa('XML::Xerces::XMLURL')
       );
@@ -99,13 +95,16 @@ result(is_object($xml_url)
 # test getFragment
 result($xml_url3->getFragment() eq $fragment);
 
+# test getQuery
+result($xml_url3->getQuery() eq $query);
+
 # test getPath
 result($xml_url3->getPath() eq $path);
 
 # test getURLText
 $URL = $base;
 $URL =~ s|/$||;
-$URL .= "$path#$fragment";
+$URL .= $url_text;
 result($xml_url3->getURLText() eq $URL);
 
 # test getPortNum
@@ -164,9 +163,9 @@ $xml_url3->makeRelativeTo($xml_url);
 result(!$xml_url3->isRelative());
 
 # test overloaded setURL with XMLURL for base
-$xml_url2->setURL($xml_url,"$path#$fragment");
+$xml_url2->setURL($xml_url,$url_text);
 result($xml_url2->getURLText() eq $URL);
 
 # test overloaded setURL with string for base
-$xml_url3->setURL($base,"$path#$fragment");
+$xml_url3->setURL($base,$url_text);
 result($xml_url3->getURLText() eq $URL);

@@ -7,7 +7,7 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..35124\n"; }
+BEGIN { $| = 1; print "1..35125\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Carp;
 
@@ -91,6 +91,12 @@ eval {
 result($@
        && $@->{code} == $XML::Xerces::DOM_DOMException::INVALID_CHARACTER_ERR
       );
+
+# check that getElementById() doesn't segfault on undef ID
+eval {
+  $doc1->getElementById(undef);
+};
+result($@);
 
 # check that an element can have a digit if a valid character comes first
 eval {

@@ -15,8 +15,7 @@ use XML::Xerces;
 
 use lib 't';
 use TestUtils qw(result
-		 is_object
-		 $PERSONAL_FILE_NAME);
+		 is_object);
 use vars qw($i $loaded $error);
 use strict;
 
@@ -30,24 +29,27 @@ result($loaded);
 # (correspondingly "not ok 13") depending on the success of chunk 13
 # of the test code):
 
-my $URL = "file:$PERSONAL_FILE_NAME";
+my $file_name = '/home/user/test.xml';
+my $URL = "file:$file_name";
 my $xml_url = XML::Xerces::XMLURL->new($URL);
 result(is_object($xml_url) && $xml_url->isa('XML::Xerces::XMLURL'));
 
-my $is = XML::Xerces::URLInputSource->new($xml_url);
+my $is = eval{XML::Xerces::URLInputSource->new($xml_url)};
+XML::Xerces::error($@) if $@;
 result(is_object($xml_url) && $is->isa('XML::Xerces::URLInputSource'));
 
 # now test the overloaded constructors
-$is = XML::Xerces::URLInputSource->new('file:',"file:$PERSONAL_FILE_NAME");
+
+$is = eval{XML::Xerces::URLInputSource->new('file:/',"$file_name")};
+XML::Xerces::error($@) if $@;
 result(is_object($xml_url) && $is->isa('XML::Xerces::URLInputSource'));
 
-$is = XML::Xerces::URLInputSource->new('file:',"file:$PERSONAL_FILE_NAME", 'foo');
+$is = eval{XML::Xerces::URLInputSource->new('file:/',"$file_name", 'foo')};
+XML::Xerces::error($@) if $@;
 result($is->getPublicId() eq 'foo');
 
-# test that a relative URL causes an exception
-eval {
-  $is = XML::Xerces::URLInputSource->new('file:',$PERSONAL_FILE_NAME, 'foo');
-};
+# test that a baseId with no '/' causes a relative URL exception
+$is = eval{XML::Xerces::URLInputSource->new('file:',$file_name,'foo')};
 my $error = $@;
 result($error &&
        is_object($error) &&
@@ -57,7 +59,7 @@ result($error &&
 
 # test that a bad protocol
 eval {
-  $is = XML::Xerces::URLInputSource->new('foo','blorphl://./foo.html', 'foo');
+  $is = XML::Xerces::URLInputSource->new('blorphl:/xs/./foo.html', 'foo');
 };
 $error = $@;
 result($error
@@ -67,10 +69,9 @@ result($error
        );
 
 # test a non-existent protocol
-eval {
-  $is = XML::Xerces::URLInputSource->new('foo','', 'foo');
-};
+$is = eval{XML::Xerces::URLInputSource->new('foo','', 'foo')};
 $error = $@;
+# printf STDERR "Got error code: %d\n", $error->getCode();
 result($error
        && is_object($error)
        && $error->isa('XML::Xerces::XMLException')

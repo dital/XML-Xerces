@@ -151,7 +151,7 @@ Perl2XMLString(SV* input){
     $1 = new XMLByte[$2];
     memcpy($1, xmlbytes, $2);
   } else {
-    croak("Type error in argument 2 of $name, Expected perl-string.");
+    croak("Type error in argument 2 of $symname, Expected perl-string.");
     XSRETURN(1);
   }
 }
@@ -171,11 +171,14 @@ Perl2XMLString(SV* input){
 //
 // IDOM_Node*
 //
+
 %typemap(out) IDOM_Node* {
     swig_type_info *ty = SWIG_TypeDynamicCast($1_descriptor, (void **) &$1);
     ST(argvi) = sv_newmortal();
     SWIG_MakePtr(ST(argvi++), (void *) result, ty);
 }
+
+// %typemap(out) IDOM_Node * = SWIGTYPE *DYNAMIC;
 
 DYNAMIC_CAST(SWIGTYPE_p_IDOM_Node, IDOM_Node_dynamic_cast);
 

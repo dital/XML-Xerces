@@ -123,7 +123,7 @@ EOW
 my $XERCES_MAJOR_VERSION = '1.7';
 my $XERCES_MINOR_VERSION = '0';
 my $XERCES_LIB_VERSION = "$XERCES_MAJOR_VERSION.$XERCES_MINOR_VERSION";
-my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '_0';
+my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-1';
 my $XERCES_VERSION = "$XERCES_LIB_VERSION";
 
 # this substitution will yield '1_4' from '1.4' to be used by 'LIBS'
@@ -178,48 +178,33 @@ if ($XERCES_DEVEL) {
   my $FIND = 'find';
 
   # set up the custom headers
+  my @header_files;
   my @handler_headers;
   chomp(@handler_headers = `$FIND Handler -name "*.swig.hpp"`);
-  my @pre_swig_headers = qw(
-			   );
-  my $PRE_SWIG_HEADERS;
-  my @PRE_SWIG_HEADERS;
-  my $PRIVATE_HEADER_DIR = './Xerces_headers';
-
-  foreach my $header (@pre_swig_headers) {
-    my $outfile = "$PRIVATE_HEADER_DIR/$header";
-    my $infile = "$XERCES_INCLUDE/$header";
-    push(@PRE_SWIG_HEADERS,$outfile);
-    $PRE_SWIG_HEADERS .= <<EOT;
-$outfile: $infile
-	preSwig.pl --directory $PRIVATE_HEADER_DIR $infile
-
-EOT
-  }
 
   sub Xerces_postamble {
-    chomp(my @header_files = `$FIND Xerces_headers -name "*.hpp"`);
-    push(@header_files,@handler_headers);
+    chomp(my @import_files = `$FIND Handler -name "*.i"`);
+    push(@header_files,@handler_headers,@import_files);
     local $" = ' ';
-    <<TERMINUS;
-$PRE_SWIG_HEADERS
-
-Xerces.C: Xerces.i typemaps.i @PRE_SWIG_HEADERS @header_files postSource.pl 
+    my $retval = <<TERMINUS;
+Xerces.C: Xerces.i typemaps.i @header_files postSource.pl 
 	\$(SWIG) -DVERSION="$XERCES_PERL_VERSION" \$(INC) -package XML::Xerces -perl5 -c++ -shadow -o Xerces.C Xerces.i
 	perl postSource.pl Xerces.C
 	perl postModule.pl Xerces.pm
 
 
-Xerces.pm: Xerces.C postModule.pl
-	if [[ postModule.pl -nt Xerces.pm ]] ; then \\
+Xerces.pm: Xerces.C postModule.pl Xerces-extra.pm
+	if [[ postModule.pl -nt Xerces.pm || Xerces-extra.pm -nt Xerces.pm ]] ; then \\
 \$(SWIG) -I. \$(INC) -package XML::Xerces -perl5 -c++ -shadow -o foo.C Xerces.i ; \\
 rm foo.C ; \\
 perl postModule.pl Xerces.pm ; \\
+cp -f Xerces.pm blib/lib/XML ; \\
 	fi
 
 $HANDLER_LIB:
 	\$(MAKE) -C Handler static
 TERMINUS
+    return $retval;
   }
 
   print STDERR "Welcome Xerces Developer!\n";
@@ -244,6 +229,7 @@ my $OBJS = 'Xerces$(OBJ_EXT)';
 # write the makefile
 # see the hints/ directory for architecture specific stuff!
 WriteMakefile(
+  'NAME'        => 'XML::Xerces',
   'AUTHOR'      => 'The Xerces-P developers',
   'ABSTRACT'    => 'Perl Interface for Xerces XML API',
   'CCFLAGS'     => $CFLAGS,
@@ -254,7 +240,6 @@ WriteMakefile(
   'INC'         => $INCLUDES,
   'MYEXTLIB'    => $HANDLER_LIB,
   'LIBS'        => [$LIBS],
-  'NAME'        => 'XML::Xerces',
   'OBJECT'      => $OBJS,
   'DIR'         => ['DOMParse'],
   'VERSION'     => "$XERCES_PERL_VERSION",

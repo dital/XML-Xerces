@@ -7,7 +7,7 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..4\n"; }
+BEGIN { $| = 1; print "1..5\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Carp;
 
@@ -23,6 +23,17 @@ use strict;
 $loaded = 1;
 $i = 1;
 result($loaded);
+
+package MyNodeFilter;
+use strict;
+use vars qw(@ISA);
+@ISA = qw(XML::Xerces::PerlNodeFilter);
+sub acceptNode {
+  my ($self,$node) = @_;
+  return $XML::Xerces::DOM_NodeFilter::FILTER_ACCEPT;
+}
+
+package main;
 
 ######################### End of black magic.
 
@@ -47,34 +58,32 @@ my $document = q[<?xml version="1.0" encoding="utf-8"?>
 	</person>
 </contributors>];
 
-my $DOM1 = new XML::Xerces::DOMParser;
+my $DOM = new XML::Xerces::DOMParser;
 my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
-$DOM1->setErrorHandler($ERROR_HANDLER);
-$DOM1->parse(XML::Xerces::MemBufInputSource->new($document));
+$DOM->setErrorHandler($ERROR_HANDLER);
+$DOM->parse(XML::Xerces::MemBufInputSource->new($document));
 
-my $DOM2 = new XML::Xerces::DOMParser;
-$DOM2->setErrorHandler($ERROR_HANDLER);
-$DOM2->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'));
+my $doc = $DOM->getDocument();
+my $root = $doc->getDocumentElement();
+my $filter = MyNodeFilter->new();
+my $what = $XML::Xerces::DOM_NodeFilter::SHOW_ELEMENT;
+my $walker = $doc->createTreeWalker($root,$what,$filter,1);
+result(defined $walker
+      and is_object($walker)
+      and $walker->isa('XML::Xerces::DOM_TreeWalker'));
 
-my $doc1 = $DOM1->getDocument();
-my $doc2 = $DOM2->getDocument();
+# test parentNode
+$walker->nextNode();
+result($walker->parentNode() == $root);
 
-my $root1 = $doc1->getDocumentElement();
-my @persons1 = $doc1->getElementsByTagName('person');
-my @names1 = $doc1->getElementsByTagName('name');
-my $root2 = $doc2->getDocumentElement();
-my @persons2 = $doc2->getElementsByTagName('person');
-my @names2 = $doc1->getElementsByTagName('name');
+my $success = 1;
+my $count = 0;
+while (my $node = $walker->nextNode()) {
+  $count++;
+  $success = 0 unless $node->isa('XML::Xerces::DOM_Element');
+}
+# test that we only got elements
+result($success);
 
-# importing a child from a different document
-eval {
-  my $copy = $doc1->importNode($persons1[0],0);
-  $root1->appendChild($copy);
-};
-result(!$@ &&
-      scalar @persons1 < scalar ($root1->getElementsByTagName('person')));
-
-# test the equality operators
-my @people = $doc1->getElementsByTagName('person');
-result($root1 != $root2);
-result($people[0] == $persons1[0]);
+#test that we got all the elements
+result($count == 9);

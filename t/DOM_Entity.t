@@ -10,6 +10,7 @@
 BEGIN { $| = 1; print "1..3\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Carp;
+# use blib;
 use XML::Xerces;
 
 use lib 't';
@@ -40,14 +41,18 @@ EOT
 
 $DOM->setCreateEntityReferenceNodes(1);
 $DOM->setValidationScheme($XML::Xerces::DOMParser::Val_Never);
-my $is = XML::Xerces::MemBufInputSource->new($document);
-$DOM->parse($is);
+my $is = eval{XML::Xerces::MemBufInputSource->new($document)};
+XML::Xerces::error($@) if $@;
+
+eval{$DOM->parse($is)};
+XML::Xerces::error($@) if $@;
 
 my $doc = $DOM->getDocument();
 my $doctype = $doc->getDoctype();
 
 # get the single <element> node
 my %ents = $doctype->getEntities();
-result(exists $ents{data} && $ents{data} eq 'DATA');
+my $fail;
+result(exists $ents{data} && $ents{data} eq 'DATA', $fail=1);
 
-result(exists $ents{bar} && $ents{bar} eq 'BAR', my $fail=1);
+result(exists $ents{bar} && $ents{bar} eq 'BAR', $fail=1);

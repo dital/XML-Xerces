@@ -1,5 +1,18 @@
 Revision history for Perl extension Genex.
 
+1.7.0-1 Wed Apr 24 22:07:13 MDT 2002
+	- Second release that supports Xerces-C-1.7.0
+	- Added support for DOM_NodeIterator and DOM_TreeWalker
+	- Added basic support for XMLScanner
+	- DOM_Document's will now stay alive even if the DOMParser
+	  that created them goes out of scope. This means it is
+          possible to have a subroutine that parses a file and returns
+	  the resulting DOM_Document. This used to cause a segfault.
+	- Fixed overloaded InputSource constructors that were using
+          char* versions instead of Unicode versions
+	- Many internal changes that improve code generation and
+          maintenance, thanks to the ever-improving SWIG.
+
 1.7.0_0 Sun Mar 24 18:26:37 MST 2002
         - Mirrors Xerces-C-1.7.0 release
 	- The DOM API is now implemented by the Xerces-C IDOM

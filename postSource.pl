@@ -13,19 +13,6 @@ open(FILE, $file)
 open(TEMP, ">$temp_file")
   or die "Couldn't open $temp_file for writing";
 
-# now for the methods that only raise SAXExceptions
-my @sax_methods = qw(
-		     SAX2XMLReader::setProperty
-		     SAX2XMLReader::setFeature
-		     SAX2XMLReader::getProperty
-		     SAX2XMLReader::getFeature
-		    );
-my $sax_methods = join '|', 
-  map {s/::/_/; "_wrap_$_"} @sax_methods;
-
-my $saxexception_regexp = qr/XS\(($sax_methods)\)/;
-
-
 FILE: while(<FILE>) {
 
   substitute_line($_);
@@ -61,66 +48,7 @@ FILE: while(<FILE>) {
 	croak("ERROR: XML::Xerces: INIT: Could not create ISO-8859-1 transcoder");
     }
 
-    XML_EXCEPTION_STASH = gv_stashpv(XML_EXCEPTION, FALSE);
-    IDOM_EXCEPTION_STASH = gv_stashpv(IDOM_EXCEPTION, FALSE);
-
-    newXS((char *) "XML::Xercesc::DOM_Node_operator_equal_to", _wrap_DOM_Node_operator_equal_to, __FILE__);
-    newXS((char *) "XML::Xercesc::DOM_Node_operator_not_equal_to", _wrap_DOM_Node_operator_not_equal_to, __FILE__);
 TEXT
-    next;
-  }
-
-  # when we reach the first IDOM methods, print out the operators
-  if (/XS\(_wrap_delete_DOM_Node\)/) {
-    print TEMP <<'TEXT';
-XS(_wrap_DOM_Node_operator_not_equal_to) {
-    IDOM_Node *arg0 ;
-    IDOM_Node *arg1 ;
-    int argvi = 0;
-    bool result ;
-    dXSARGS;
-    
-    if ((items < 2) || (items > 2)) 
-    croak("Usage: DOM_Node_operator_not_equal_to(self,other);");
-    if (SWIG_ConvertPtr(ST(0),(void **) &arg0,SWIGTYPE_p_IDOM_Node) < 0) {
-        croak("Type error in argument 1 of DOM_Node_operator_not_equal_to. Expected %s", SWIGTYPE_p_IDOM_Node->name);
-        XSRETURN(1);
-    }
-    if (SWIG_ConvertPtr(ST(1),(void **) &arg1,SWIGTYPE_p_IDOM_Node) < 0) {
-        croak("Type error in argument 2 of DOM_Node_operator_not_equal_to. Expected %s", SWIGTYPE_p_IDOM_Node->name);
-        XSRETURN(1);
-    }
-    result = (arg0 != arg1);
-    ST(argvi) = sv_newmortal();
-    sv_setiv(ST(argvi++),(IV) result);
-    XSRETURN(argvi);
-}
-
-XS(_wrap_DOM_Node_operator_equal_to) {
-    IDOM_Node *arg0 ;
-    IDOM_Node *arg1 ;
-    int argvi = 0;
-    bool result ;
-    dXSARGS;
-    
-    if ((items < 2) || (items > 2)) 
-    croak("Usage: DOM_Node_operator_equal_to(self,other);");
-    if (SWIG_ConvertPtr(ST(0),(void **) &arg0,SWIGTYPE_p_IDOM_Node) < 0) {
-        croak("Type error in argument 1 of DOM_Node_operator_equal_to. Expected %s", SWIGTYPE_p_IDOM_Node->name);
-        XSRETURN(1);
-    }
-    if (SWIG_ConvertPtr(ST(1),(void **) &arg1,SWIGTYPE_p_IDOM_Node) < 0) {
-        croak("Type error in argument 2 of DOM_Node_operator_equal_to. Expected %s", SWIGTYPE_p_IDOM_Node->name);
-        XSRETURN(1);
-    }
-    result = (arg0 == arg1);
-    ST(argvi) = sv_newmortal();
-    sv_setiv(ST(argvi++),(IV) result);
-    XSRETURN(argvi);
-}
-
-TEXT
-    print TEMP;
     next;
   }
 
@@ -144,57 +72,6 @@ TEXT
 		      0
 		     );
     next FILE;
-  }
-
-  # SAXParser::Parse has two possible exceptions
-  if (/$saxexception_regexp/) {
-    print TEMP;
-  TEMP: while (<FILE>) {
-      substitute_line($_);
-      if (/catch \(const XMLException\& e\)/) {
-	print TEMP <<"EOT";
-    catch (const SAXNotSupportedException& e)
-    {
-	    char *class_name = "XML::Xerces::SAXNotSupportedException";
-	    HV *hash = newHV();
-	    HV *stash = gv_stashpv(class_name, FALSE);
-	    SV *tmpsv;
-	    hv_magic(hash, 
-		     (GV *)sv_setref_pv(sv_newmortal(), 
-					class_name, (void *)&e), 
-		     'P');
-	    tmpsv = sv_bless(newRV_noinc((SV *)hash), stash);
-	    SV *error = ERRSV;
-	    SvSetSV(error,tmpsv);
-	    (void)SvUPGRADE(error, SVt_PV);
-	    Perl_die(Nullch);
-    }
-    catch (const SAXNotRecognizedException& e)
-    {
-	    char *class_name = "XML::Xerces::SAXNotRecognizedException";
-	    HV *hash = newHV();
-	    HV *stash = gv_stashpv(class_name, FALSE);
-	    SV *tmpsv;
-	    hv_magic(hash, 
-		     (GV *)sv_setref_pv(sv_newmortal(), 
-					class_name, (void *)&e), 
-		     'P');
-	    tmpsv = sv_bless(newRV_noinc((SV *)hash), stash);
-	    SV *error = ERRSV;
-	    SvSetSV(error,tmpsv);
-	    (void)SvUPGRADE(error, SVt_PV);
-	    Perl_die(Nullch);
-    }
-EOT
-	print TEMP;
-	skip_to_closing_brace(\*FILE, \&substitute_line, \*TEMP);
-	next FILE;
-      } else {
-	substitute_line($_);
-	print TEMP;
-	next TEMP;
-      }
-    }
   }
 
   # we need to move the new SWIG_TypeCheck() *after* the perl

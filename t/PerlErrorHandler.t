@@ -7,9 +7,10 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..3\n"; }
+BEGIN { $| = 1; print "1..6\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Carp;
+
 # use blib;
 use XML::Xerces;
 
@@ -148,6 +149,34 @@ EOE
 
   my $error_handler = MyErrorHandler->new();
   $dom->setErrorHandler($error_handler);
+
+  $dom->setValidationScheme($XML::Xerces::DOMParser::Val_Always);
+  eval {
+    $dom->parse(XML::Xerces::MemBufInputSource->new($document, 'foo') );
+  };
+
+  my $expected_error = <<EOE;
+ERROR:
+LINE:    4
+COLUMN:  11
+MESSAGE: Unknown element 'personnel'
+EOE
+  result($expected_error eq $error);
+}
+
+# test redefining the handler
+{
+  $error = "";
+
+  my $dom = XML::Xerces::DOMParser->new();
+
+  my $error_handler = MyErrorHandler->new();
+  my $error_handler2 = MyErrorHandler->new();
+  my $tmp = $dom->setErrorHandler($error_handler);
+  result(!defined $tmp);
+
+  $tmp = $dom->setErrorHandler($error_handler2);
+  result(defined $tmp, my $fail=1);
 
   $dom->setValidationScheme($XML::Xerces::DOMParser::Val_Always);
   eval {

@@ -1,17 +1,5 @@
-#include <iostream.h>
 #include "xercesc/sax/InputSource.hpp"
 #include "PerlEntityResolverHandler.hpp"
-
-PerlEntityResolverHandler::PerlEntityResolverHandler() {
-    callbackObj = NULL;
-}
-
-PerlEntityResolverHandler::~PerlEntityResolverHandler() {
-    if (callbackObj) {
-	SvREFCNT_dec(callbackObj); 
-	callbackObj = NULL;
-    }
-}
 
 SV*
 PerlEntityResolverHandler::set_callback_obj(SV* object) {
@@ -27,7 +15,7 @@ PerlEntityResolverHandler::set_callback_obj(SV* object) {
 
 InputSource *
 PerlEntityResolverHandler::resolveEntity (const XMLCh* const publicId, 
-				      const XMLCh* const systemId)
+					  const XMLCh* const systemId)
 {
     if (!callbackObj) {
         croak("\nresolveEntity: no EntityResolver set\n");

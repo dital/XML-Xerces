@@ -1,6 +1,6 @@
 Xerces.pm: The Perl API to the Apache Xerces XML parser
 
-       $Id: README,v 1.17 2002/03/25 06:56:12 jasons Exp $
+       $Id: README,v 1.19 2002/04/25 06:05:04 jasons Exp $
 
 LEGAL HOOP JUMPING:
 ===================
@@ -9,7 +9,7 @@ License, Version 1.1. See the file LICENSE for details
 
 DESCRIPTION:
 ============
-Xerces.pm is the Perl API to the Apache project's Xerces XML
+XML::Xerces is the Perl API to the Apache project's Xerces XML
 parser. It is implemented using the Xerces C++ API, and it provides
 access to *most* of the C++ API from Perl.
 
@@ -25,16 +25,21 @@ scalability. It also provides full support for Unicode.
 
 XML::Xerces implements the vast majority of the Xerces-C API (if you
 notice any discrepancies please mail the list
-(xerces-p-dev@xml.apache.org). The exception of this is functions in
-the C++ API which have been overloaded to accept different arguments,
-currently have only a single version in the Perl API. This is a simple
-fix, but will take time.
+(xerces-p-dev@xml.apache.org). The exception of this are some
+functions in the C++ API which have been overloaded to accept
+different arguments may currently have only a single version in the
+Perl API. This is a simple fix and most of the overloaded functions
+are finished, but it will take time to catch them all. Also, there are
+some functions in the C++ API which either have better Perl
+counterparts (such as file I/O) or which manipulate internal
+C++ information that serves no useful role in the Perl module.
 
-The majority of the API is created automatically using Simplified
-Wrapper Interface Generator (SWIG, http://www.swig.org/). Care has
-been taken to make most method invocations natural to perl
-programmers, so a number of rough C++ edges have been smoothed over
-(See the 'Special Perl API features' section).
+The majority of the API is created automatically using the amazing
+wonderful Simplified Wrapper Interface Generator (SWIG, 
+http://www.swig.org/). Care has been taken to make most method
+invocations natural to perl programmers, so a number of rough C++
+edges have been smoothed over (See the 'Special Perl API features'
+section).
 
 AVAILABLE PLATFORMS:
 ====================
@@ -299,9 +304,16 @@ contents of $@ should be checked:
     }
   }
 
-XML::Xerces will catch C++ exceptions and call die() after setting $@ to
-the C++ exception object. If ref($@) is true, it is an exception
-object, if false it is a standard Perl string.
+XML::Xerces will catch C++ exceptions and call die() after setting $@
+to the C++ exception object. If ref($@) is true, it is an exception
+object, if false it is a standard Perl string. To make this very
+common check easier to use, XML::Xerces provides a utility method,
+error() that will do this for you, so the above could be written:
+
+  eval {
+    $parser->parse (XML::Xerces::LocalFileInputSource->new($file));
+  };
+  XML::Xerces::error($@) if $@;
 
 To know which methods are capable of throwing exceptions, check the
 Xerces-C API documentation.
@@ -316,7 +328,7 @@ Since Xerces-C-1.5 there has been an experimental DOM implementation
 of XML-Xerces-1.7 all DOM methods have been switched to the IDOM
 implementation, and the old DOM implementation is no longer available. 
 
-This has made the codebase much smaller and more efficient, but there
+This has made the codebase *much* smaller and more efficient, but there
 are some important issues to watch out for, and some code written to
 use the old DOM implementation may not work:
 

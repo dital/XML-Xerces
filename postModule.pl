@@ -21,44 +21,7 @@ my @dom_copy_methods = qw(DOM_XMLDecl
 			  DOM_Attr
 			 );
 
-my @dom_node_methods = qw(DOM_Node::new
-			DOM_Node::getParentNode
-			DOM_Node::getFirstChild
-			DOM_Node::getLastChild
-			DOM_Node::getPreviousSibling
-			DOM_Node::getNextSibling
-			DOM_Node::cloneNode
-			DOM_Node::insertBefore
-			DOM_Node::replaceChild
-			DOM_Node::removeChild
-			DOM_Node::appendChild
-			DOM_Document::importNode
-			DOM_Entity::getFirstChild
-			DOM_Entity::getLastChild
-			DOM_Entity::getPreviousSibling
-			DOM_Entity::getNextSibling
-			DOM_NamedNodeMap::setNamedItem
-			DOM_NamedNodeMap::getNamedItem
-			DOM_NamedNodeMap::removedNamedItem
-			DOM_NamedNodeMap::setNamedItemNS
-			DOM_NamedNodeMap::getNamedItemNS
-			DOM_NamedNodeMap::removedNamedItemNS
-			DOM_NamedNodeMap::item
-			DOM_NodeList::item
-			DOM_NodeIterator::nextNode
-			DOM_NodeIterator::previousNode
-			DOM_Range::getStartContainer
-			DOM_Range::getEndContainer
-			DOM_Range::getCommonAncestorContainer
-			DOM_TreeWalker::getCurrentNode
-			DOM_TreeWalker::getParentNode
-			DOM_TreeWalker::getFirstChild
-			DOM_TreeWalker::getLastChild
-			DOM_TreeWalker::getPreviousSibling
-			DOM_TreeWalker::getNextSibling
-			DOM_TreeWalker::getPreviousNode
-			DOM_TreeWalker::getNextNode
-		       );
+my %VARS;
 
 my $num = 0;
 ++$num while -e "$progname.$num.tmp";
@@ -70,23 +33,15 @@ for my $file (@ARGV) {
 
   my $CURR_CLASS = '';
   while(<FILE>) {
-    # we turn the DOM into the DOM
-#     s/(?<!Xercesc::)IDOM/DOM/;
-#     s/(?<=Xercesc::new_)DOM/IDOM/;
 
     if (/^package/) {
       ($CURR_CLASS) = m/package\s+XML::Xerces::([\w_]+);/;
       print TEMP;
-      if ($CURR_CLASS eq 'DOM_Node') {
-	print TEMP <<'TEXT';
-use overload
-    "==" => sub { $_[0]->operator_equal_to($_[1])},
-    "!=" => sub { $_[0]->operator_not_equal_to($_[1])},
-    "fallback" => 1;
-*operator_not_equal_to = *XML::Xercesc::DOM_Node_operator_not_equal_to;
-*operator_equal_to = *XML::Xercesc::DOM_Node_operator_equal_to;
-
-TEXT
+      unless ($CURR_CLASS ne 'XML::Xerces'
+	      and $CURR_CLASS ne 'XML::Xercesc'
+	      and exists $VARS{$CURR_CLASS}) {
+	$VARS{$CURR_CLASS}++;
+	print TEMP 'use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);', "\n";
       }
       next;
     }
@@ -115,10 +70,21 @@ TEXT
 		   "    return unless defined \$self;\n",
 		   1);
       }
+      if ($CURR_CLASS eq 'DOM_Document') {
+	print TEMP <<'EOT';
+sub DESTROY {
+    my $self = shift;
+    # we remove an reference to the Parser that created us
+    if (exists $OWNER{$self}->{__PARSER}) {
+        undef $OWNER{$self}->{__PARSER};
+    }
+}
+EOT
+      }
       next;
     }
 
-    # we remove all the enums inherited through DOM_Node and DOM_Node
+    # we remove all the enums inherited through DOM_Node
     next if /^*[_A-Z]+_NODE =/ && !/DOM_Node/;
 
     # now we set these aliases correctly
@@ -200,25 +166,6 @@ EOT
 	}
       }
     }
-
-    #   DOM_Node: automatically convert to base class
-#     if (grep {/$CURR_CLASS/} @dom_node_methods) {
-#       if (my ($sub) = /^sub\s+([\w_]+)/) {
-# 	$sub = "$ {CURR_CLASS}::$sub";
-# 	if (grep {/$sub$/} @dom_node_methods) {
-# 	  my $fix = <<'EOT';
-#     # automatically convert to base class
-#     $result = $result->actual_cast();
-# EOT
-# 	  fix_method(\*FILE,
-# 		     \*TEMP,
-# 		     qr/return undef/,
-# 		     $fix,
-# 		     1);
-# 	  next;
-# 	}
-#       }
-#     }
 
     #   MemBufInputSource: new has *optional* SYSTEM ID
     if ($CURR_CLASS eq 'MemBufInputSource') {
@@ -377,6 +324,7 @@ EOT
       } elsif (/^sub\s+new/) {
 	my $subst_func = sub {$_[0] = '' if $_[0] =~ /tied/;};
 	my $new = <<'EOT';
+    my $self;
     if (ref $args[0]) {
       $args[0] = tied(%{$args[0]});
       $self = XML::Xercesc::new_URLInputSource(@args);
@@ -404,6 +352,7 @@ EOT
       } elsif (/^sub\s+new/) {
 	my $subst_func = sub {$_[0] = '' if $_[0] =~ /tied/;};
 	my $new = <<'EOT';
+    my $self;
     if (scalar @args == 1) {
       $self = XML::Xercesc::new_XMLUri__constructor__uri(@args);
     } else {
@@ -428,6 +377,7 @@ EOT
 	next;
       } elsif (/^sub\s+new/) {
 	my $new = <<"EOT";
+    my \$self;
     if (ref \$pkg) {
       \$self = XML::Xercesc::new_${CURR_CLASS}__constructor__copy(\$pkg);
       \$pkg = ref \$pkg;
@@ -450,10 +400,34 @@ EOT
 	next;
       } elsif (/^sub\s+new/) {
 	my $new = <<'EOT';
+    my $self;
     if (scalar @args == 1) {
       $self = XML::Xercesc::new_LocalFileInputSource(@args);
     } else {
       $self = XML::Xercesc::new_LocalFileInputSource__constructor__base(@args);
+    }
+EOT
+	fix_method(\*FILE,
+		   \*TEMP,
+		   qr/\$self = XML::Xercesc::new_/,
+		   $new);
+	next;
+      }
+    }
+
+    if ($CURR_CLASS =~ /(Perl(\w+)Handler)/) {
+      my $class = $1;
+      # this line assumed the first constructor, so we remove it
+      if (/^sub.*__constructor__/) {
+	remove_method(\*FILE);
+	next;
+      } elsif (/^sub\s+new/) {
+	my $new = <<"EOT";
+    my \$self;
+    if (scalar \@args == 1) {
+      \$self = XML::Xercesc::new_$ {class}__constructor__arg(\@args);
+    } else {
+      \$self = XML::Xercesc::new_$ {class}();
     }
 EOT
 	fix_method(\*FILE,
@@ -485,6 +459,7 @@ EOT
 	next;
       } elsif (/^sub\s+new/) {
 	my $new = <<'EOT';
+    my $self;
     if (ref($args[0])) {
       if (scalar @args == 1) {
         $self = XML::Xercesc::new_XMLURL__constructor__copy(@args);
@@ -539,6 +514,45 @@ EOT
       }
     }
 
+    if ($CURR_CLASS =~ /DOM_DOMException/) {
+      if (/^sub\s+new/) {
+	# add the reverse name lookup for the error codes
+	print TEMP <<'EOT';
+use vars qw(@CODES $INDEX_SIZE_ERR
+	    $DOMSTRING_SIZE_ERR
+	    $HIERARCHY_REQUEST_ERR
+	    $WRONG_DOCUMENT_ERR
+	    $INVALID_CHARACTER_ERR
+	    $NO_DATA_ALLOWED_ERR
+	    $NO_MODIFICATION_ALLOWED_ERR
+	    $NOT_FOUND_ERR
+	    $NOT_SUPPORTED_ERR
+	    $INUSE_ATTRIBUTE_ERR
+	    $INVALID_STATE_ERR
+	    $SYNTAX_ERR
+	    $INVALID_MODIFICATION_ERR
+	    $NAMESPACE_ERR
+	    $INVALID_ACCESS_ERR);
+
+$CODES[$INDEX_SIZE_ERR] = 'INDEX_SIZE_ERR';
+$CODES[$DOMSTRING_SIZE_ERR] = 'DOMSTRING_SIZE_ERR';
+$CODES[$HIERARCHY_REQUEST_ERR] = 'HIERARCHY_REQUEST_ERR';
+$CODES[$WRONG_DOCUMENT_ERR] = 'WRONG_DOCUMENT_ERR';
+$CODES[$INVALID_CHARACTER_ERR] = 'INVALID_CHARACTER_ERR';
+$CODES[$NO_DATA_ALLOWED_ERR] = 'NO_DATA_ALLOWED_ERR';
+$CODES[$NO_MODIFICATION_ALLOWED_ERR] = 'NO_MODIFICATION_ALLOWED_ERR';
+$CODES[$NOT_FOUND_ERR] = 'NOT_FOUND_ERR';
+$CODES[$NOT_SUPPORTED_ERR] = 'NOT_SUPPORTED_ERR';
+$CODES[$INUSE_ATTRIBUTE_ERR] = 'INUSE_ATTRIBUTE_ERR';
+$CODES[$INVALID_STATE_ERR] = 'INVALID_STATE_ERR';
+$CODES[$SYNTAX_ERR] = 'SYNTAX_ERR';
+$CODES[$INVALID_MODIFICATION_ERR] = 'INVALID_MODIFICATION_ERR';
+$CODES[$NAMESPACE_ERR] = 'NAMESPACE_ERR';
+$CODES[$INVALID_ACCESS_ERR] = 'INVALID_ACCESS_ERR';
+EOT
+      }
+    }
+
     ######################################################################
     #
     # Callback registration
@@ -547,17 +561,23 @@ EOT
     # internal reference to the error handler perl object it will
     # get destroyed if it goes out of scope. Then if an error occurs
     # perl will dump core
-    #
+
     # look for: *setErrorHandler = *XML::Xercesc::*_setErrorHandler;
     if (/\*XML::Xercesc::(\w+)_setErrorHandler/) {
       my $class = $1;
       print TEMP <<"EOT";
 sub setErrorHandler {
   my (\$self,\$handler) = \@_;
-  my \$callback = XML::Xerces::PerlErrorCallbackHandler->new();
-  \$callback->set_callback_obj(\$handler);
+  my \$retval;
+  my \$callback = \$XML::Xerces::$ {class}::OWNER{\$self}->{__ERROR_HANDLER};
+  if (defined \$callback) {
+    \$retval = \$callback->set_callback_obj(\$handler);
+  } else {
+    \$callback = XML::Xerces::PerlErrorCallbackHandler->new(\$handler);
+    \$XML::Xerces::$ {class}::OWNER{\$self}->{__ERROR_HANDLER} = \$callback;
+  }
   XML::Xercesc::$ {class}_setErrorHandler(\$self,\$callback);
-  \$self{__ERROR_HANDLER} = \$callback;
+  return \$retval;
 }
 EOT
       # we don't print out the function
@@ -571,10 +591,14 @@ EOT
       print TEMP <<"EOT";
 sub setEntityResolver {
   my (\$self,\$handler) = \@_;
-  my \$callback = XML::Xerces::PerlEntityResolverHandler->new();
-  \$callback->set_callback_obj(\$handler);
-  XML::Xercesc::$ {class}_setEntityResolver(\$self,\$callback);
-  \$self{__ENTITY_RESOLVER} = \$callback;
+  my \$callback = \$XML::Xerces::$ {class}::OWNER{\$self}->{__ENTITY_RESOLVER};
+  if (defined \$callback) {
+    \$callback->set_callback_obj(\$handler);
+  } else {
+    \$callback = XML::Xerces::PerlEntityResolverHandler->new(\$handler);
+    \$XML::Xerces::$ {class}::OWNER{\$self}->{__ENTITY_RESOLVER} = \$callback;
+  }
+  return XML::Xercesc::$ {class}_setEntityResolver(\$self,\$callback);
 }
 EOT
       # we don't print out the function
@@ -585,26 +609,94 @@ EOT
       print TEMP <<'EOT';
 sub setDocumentHandler {
   my ($self,$handler) = @_;
-  my $callback = XML::Xerces::PerlDocumentCallbackHandler->new();
-  $callback->set_callback_obj($handler);
-  XML::Xercesc::SAXParser_setDocumentHandler($self,$callback);
-  $self{__DOCUMENT_HANDLER} = $callback;
+  my $callback = $XML::Xerces::SAXParser::OWNER{$self}->{__DOCUMENT_HANDLER};
+  if (defined $callback) {
+    $callback->set_callback_obj($handler);
+  } else {
+    $callback = XML::Xerces::PerlDocumentCallbackHandler->new($handler);
+    $XML::Xerces::SAXParser::OWNER{$self}->{__DOCUMENT_HANDLER} = $callback;
+  }
+  return XML::Xercesc::SAXParser_setDocumentHandler($self,$callback);
 }
 EOT
       # we don't print out the function
       next;
     }
+
     # this same bug is likely to affect setContentHandler() as well
     # look for: *setContentHandler = *XML::Xercesc::SAX2XMLReader_setContentHandler;
     if (/SAX2XMLReader_setContentHandler/) {
       print TEMP <<'EOT';
 sub setContentHandler {
   my ($self,$handler) = @_;
-  my $callback = XML::Xerces::PerlContentCallbackHandler->new();
-  $callback->set_callback_obj($handler);
-  XML::Xercesc::SAX2XMLReader_setContentHandler($self,$callback);
-  # maintain an internal reference
-  $self{__CONTENT_HANDLER} = $callback;
+  my $callback = $XML::Xerces::SAX2XMLReader::OWNER{$self}->{__CONTENT_HANDLER};
+  if (defined $callback) {
+    $callback->set_callback_obj($handler);
+  } else {
+    $callback = XML::Xerces::PerlContentCallbackHandler->new($handler);
+    $XML::Xerces::SAX2XMLReader::OWNER{$self}->{__CONTENT_HANDLER} = $callback;
+  }
+  return XML::Xercesc::SAX2XMLReader_setContentHandler($self,$callback);
+}
+EOT
+      # we don't print out the function
+      next;
+    }
+
+    if ($CURR_CLASS eq 'DOM_Document') {
+      if (/^sub\s+createTreeWalker/) {
+	my $fix = <<'EOT';
+    my ($self,$root,$what,$filter,$expand) = @_;
+    my $callback = $XML::Xerces::DOM_TreeWalker::OWNER{$self}->{__NODE_FILTER};
+    if (defined $callback) {
+      $callback->set_callback_obj($filter);
+    } else {
+      $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
+      $XML::Xerces::DOM_TreeWalker::OWNER{$self}->{__NODE_FILTER} = $callback;
+    }
+    my @args = ($self,$root,$what,$callback,$expand);
+EOT
+	fix_method(\*FILE,
+		   \*TEMP,
+		   qr/my \@args/,
+		   $fix,
+		   0);
+	next;
+      }
+    }
+
+    if ($CURR_CLASS eq 'DOM_Document') {
+      if (/^sub\s+createNodeIterator/) {
+	my $fix = <<'EOT';
+    my ($self,$root,$what,$filter,$expand) = @_;
+    my $callback = $XML::Xerces::DOM_NodeIterator::OWNER{$self}->{__NODE_FILTER};
+    if (defined $callback) {
+      $callback->set_callback_obj($filter);
+    } else {
+      $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
+      $XML::Xerces::DOM_NodeIterator::OWNER{$self}->{__NODE_FILTER} = $callback;
+    }
+    my @args = ($self,$root,$what,$callback,$expand);
+EOT
+	fix_method(\*FILE,
+		   \*TEMP,
+		   qr/my \@args/,
+		   $fix,
+		   0);
+	next;
+      }
+    }
+
+    # look for: *getDocument = *XML::Xercesc::*_getDocument;
+    if (/\*XML::Xercesc::DOMParser_getDocument/) {
+      print TEMP <<'EOT';
+# hold a reference to the parser internally, so that the
+# document can exist after the parser has gone out of scope
+sub getDocument {
+  my ($self) = @_;
+  my $result = XML::Xercesc::DOMParser_getDocument($self);
+  $XML::Xerces::DOM_Document::OWNER{$result}->{__PARSER} = $self;
+  return $result;
 }
 EOT
       # we don't print out the function
@@ -613,351 +705,7 @@ EOT
 
     print TEMP;
   }
-
-my $extra = <<'EXTRA';
-############# Class : XML::Xerces::PerlContentHandler ##############
-package XML::Xerces::PerlContentHandler;
-@ISA = qw();
-sub new {
-  my $class = shift;
-  return bless {}, $class;
-}
-
-sub start_element {}
-sub end_element {}
-sub start_prefix_mapping {}
-sub end_prefix_mapping {}
-sub skipped_entity {}
-sub start_document {}
-sub end_document {}
-sub reset_document {}
-sub characters {}
-sub processing_instruction {}
-sub set_document_locator {}
-sub ignorable_whitespace {}
-
-
-############# Class : XML::Xerces::PerlDocumentHandler ##############
-package XML::Xerces::PerlDocumentHandler;
-@ISA = qw();
-sub new {
-  my $class = shift;
-  return bless {}, $class;
-}
-
-sub start_element {}
-sub end_element {}
-sub start_document {}
-sub end_document {}
-sub reset_document {}
-sub characters {}
-sub processing_instruction {}
-sub set_document_locator {}
-sub ignorable_whitespace {}
-
-
-############# Class : XML::Xerces::PerlEntityResolver ##############
-package XML::Xerces::PerlEntityResolver;
-@ISA = qw();
-sub new {
-  my $class = shift;
-  return bless {}, $class;
-}
-
-sub resolve_entity {
-  return undef;
-}
-
-
-############# Class : XML::Xerces::PerlErrorHandler ##############
-package XML::Xerces::PerlErrorHandler;
-@ISA = qw();
-sub new {
-  my $class = shift;
-  return bless {}, $class;
-}
-
-sub warning {
-  my $system_id = $_[1]->getSystemId;
-  my $line_num = $_[1]->getLineNumber;
-  my $col_num = $_[1]->getColumnNumber;
-  my $msg = $_[1]->getMessage;
-  warn(<<EOT);
-WARNING:
-FILE:    $system_id
-LINE:    $line_num
-COLUMN:  $col_num
-MESSAGE: $msg
-EOT
-}
-
-sub error {
-  my $system_id = $_[1]->getSystemId;
-  my $line_num = $_[1]->getLineNumber;
-  my $col_num = $_[1]->getColumnNumber;
-  my $msg = $_[1]->getMessage;
-  die(<<EOT);
-ERROR:
-FILE:    $system_id
-LINE:    $line_num
-COLUMN:  $col_num
-MESSAGE: $msg
-EOT
-}
-
-sub fatal_error {
-  my $system_id = $_[1]->getSystemId;
-  my $line_num = $_[1]->getLineNumber;
-  my $col_num = $_[1]->getColumnNumber;
-  my $msg = $_[1]->getMessage;
-  die(<<EOT);
-FATAL ERROR:
-FILE:    $system_id
-LINE:    $line_num
-COLUMN:  $col_num
-MESSAGE: $msg
-EOT
-}
-
-
-sub reset_errors {}
-
-package XML::Xerces::DOM_NodeList;
-# convert the NodeList to a perl list
-sub to_list {
-  my $self = shift;
-  my @list;
-  for (my $i=0;$i<$self->getLength();$i++) {
-    push(@list,$self->item($i));
-  }
-  return @list;
-}
-
-package XML::Xerces::Attributes;
-sub to_hash {
-  my $self = shift;
-  my %hash;
-  for (my $i=0; $i < $self->getLength(); $i++) {
-    my $qname = $self->getQName($i);
-    $hash{$qname}->{localName} = $self->getLocalName($i);
-    $hash{$qname}->{URI} = $self->getURI($i);
-    $hash{$qname}->{value} = $self->getValue($i);
-    $hash{$qname}->{type} = $self->getType($i);
-  }
-  return %hash;
-}
-
-package XML::Xerces::DOM_Entity;
-sub to_hash {
-  my $self = shift;
-  if ($self->hasChildNodes) {
-    return ($self->getNodeName(),
-            $self->getFirstChild->getNodeValue());
-  } else {
-    return ($self->getNodeName(), '');
-  }
-}
-
-package XML::Xerces::AttributeList;
-sub to_hash {
-  my $self = shift;
-  my %hash;
-  for (my $i=0;$i<$self->getLength();$i++) {
-    $hash{$self->getName($i)} = $self->getValue($i)
-  }
-  return %hash;
-}
-
-package XML::Xerces::DOM_NamedNodeMap;
-# convert the NamedNodeMap to a perl hash
-sub to_hash {
-  my $self = shift;
-  my @list;
-  for (my $i=0;$i<$self->getLength();$i++) {
-    my $node = $self->item($i);
-    if ($node->getNodeType == $XML::Xerces::DOM_Node::ENTITY_NODE) {
-      push(@list, $node->to_hash());
-    } else {
-      push(@list, $node->getNodeName());
-      push(@list,$node->getNodeValue());
-    }
-  }
-  return @list;
-}
-
-package XML::Xerces::DOM_Node;
-
-sub quote_content {
-  my ($self,$node_value) = @_;
-
-  $node_value =~ s/&/&amp;/g;
-  $node_value =~ s/</&lt;/g;
-  $node_value =~ s/>/&gt;/g;
-  $node_value =~ s/\"/&quot;/g;
-  $node_value =~ s/\'/&apos;/g;
-
-  return $node_value;
-}
-
-package XML::Xerces::DOM_Text;
-sub serialize {
-  return $_[0]->quote_content($_[0]->getNodeValue);
-}
-
-package XML::Xerces::DOM_ProcessingInstruction;
-sub serialize {
-  my $output .= '<?' . $_[0]->getNodeName;
-  if (length(my $str = $_[0]->getNodeValue)) {
-    $output .= " $str"; 
-  }
-  $output .= '?>';
-  return $output;
-}
-
-package XML::Xerces::DOM_Document;
-sub serialize {
-  my $output;
-  my $indent = 2;
-  for(my $child = $_[0]->getFirstChild() ;
-     defined $child ;
-     $child = $child->getNextSibling())
-  {
-    $output .= $child->serialize($indent);
-  }
-  return "$output\n";
-}
-
-package XML::Xerces::DOM_Element;
-sub serialize {
-  my ($self,$indent) = @_;
-  my $output;
-  ELEMENT: {
-    my $node_name = $self->getNodeName;
-    $output .= "<$node_name";
-
-    my $attributes = $self->getAttributes;
-    my $attribute_count = $attributes->getLength;
-
-    for(my $ix = 0 ; $ix < $attribute_count ; ++$ix) {
-      $attribute = $attributes->item($ix);
-      $output .= ' ' . $attribute->getNodeName . '="' . $self->quote_content($attribute->getNodeValue) . '"';
-    }
-
-    my $child = $self->getFirstChild();
-    if (!defined $child) {
-      $output .= '/>';
-      last ELEMENT;
-    }
-
-    $output .= '>';
-    while (defined $child) {
-      $output .= $child->serialize($indent+2);
-      $child = $child->getNextSibling();
-    }
-    $output .= "</$node_name>";
-  }
-  return $output;
-}
-
-package XML::Xerces::DOM_EntityReference;
-sub serialize {
-  my ($self) = @_;
-  my $output;
-  for(my $child = $self->getFirstChild() ;
-     defined $child;
-     $child = $child->getNextSibling())
-  {
-    $output .= $child->serialize();
-  }
-  return $output;
-}
-
-package XML::Xerces::DOM_CDATASection;
-sub serialize {
-  return '<![CDATA[' . $_[0]->getNodeValue . ']]>';
-}
-
-package XML::Xerces::DOM_Comment;
-sub serialize {
-  return '<!--' . $_[0]->getNodeValue . "-->\n";
-}
-
-package XML::Xerces::DOM_DocumentType;
-sub serialize {
-  my $output;
-  $output .= '<!DOCTYPE ' . $_[0]->getNodeName;
-
-  my $id;
-  if ($id = $_[0]->getPublicId) {
-    $output .= qq[ PUBLIC "$id"];
-    if ($id = $_[0]->getSystemId) {
-      $output .= qq[ "$id"];
-    }
-  } elsif ($id = $_[0]->getSystemId) {
-    $output .= qq[ SYSTEM "$id"];
-  }
-
-  if ($id = $_[0]->getInternalSubset) {
-    $output .= " [$id]";
-  }
-
-  $output .= ">\n";
-  return $output;
-}
-
-package XML::Xerces::DOM_Entity;
-sub serialize {
-  my $output;
-  $output .= '<!ENTITY ' . $_[0]->getNodeName;
-
-  my $id;
-  if ($id = $_[0]->getPublicId) { $output .= qq[ PUBLIC "$id"]; }
-  if ($id = $_[0]->getSystemId) { $output .= qq[ SYSTEM "$id"]; }
-  if ($id = $_[0]->getNotationName) { $output .= qq[ NDATA "$id"]; }
-
-  $output .= '>';
-  return $output;
-}
-
-package XML::Xerces::DOM_DOMException;
-sub getMessage {
-  return shift->{msg};
-}
-
-package XML::Xerces::DOM_Node;
-sub isNull {
-  warn("using DOM_Node::isNULL() is depricated");
-  return 0;
-}
-
-sub actual_cast {
-  warn("using DOM_Node::actual_cast() is depricated");
-  return $_[0];
-}
-
-package XML::Xerces::DOM_Document;
-sub createDocument {
-  warn("using DOM_Document::createDocument() is depricated");
-  return undef;
-}
-
-package XML::Xerces::DOMParser;
-sub setToCreateXMLDeclTypeNode {
-  warn("using DOMParser::setToCreateXMLDeclTypeNode() is depricated");
-}
-
-package XML::Xerces;
-#
-# NOTICE: We are automatically calling XMLPlatformUtils::Initialize()
-#   when the module is loaded. Do not call it on your own.
-#
-#
-XML::Xerces::XMLPlatformUtils::Initialize();
-
-1;
-EXTRA
   close(FILE);
-  print TEMP $extra;
   close(TEMP);
 
   rename "$progname.$num.tmp", $file;

@@ -1,21 +1,16 @@
 #include <stdlib.h>
 #include "PerlContentCallbackHandler.hpp"
 
-PerlContentCallbackHandler::PerlContentCallbackHandler() {
-    callbackObj = NULL;
-}
-
-PerlContentCallbackHandler::~PerlContentCallbackHandler() {
-    if (callbackObj) {
-	SvREFCNT_dec(callbackObj); 
-	callbackObj = NULL;
-    }
-}
-
-void
+SV*
 PerlContentCallbackHandler::set_callback_obj(SV* object) {
+    SV *oldRef = &PL_sv_undef;	// default to 'undef'
+    if (callbackObj != NULL) {
+	oldRef = callbackObj;
+	SvREFCNT_dec(oldRef);
+    }
     SvREFCNT_inc(object);
     callbackObj = object;
+    return oldRef;
 }
 
 void

@@ -1,27 +1,16 @@
 #include <stdlib.h>
 #include "PerlErrorCallbackHandler.hpp"
 
-PerlErrorCallbackHandler::PerlErrorCallbackHandler() {
-    callbackObj = NULL;
-//    printf("in error: constructor");
-}
-
-PerlErrorCallbackHandler::~PerlErrorCallbackHandler() {
-    if (callbackObj) {
-	SvREFCNT_dec(callbackObj); 
-    }
-//    printf("in error: destructor");
-}
-
-void
+SV*
 PerlErrorCallbackHandler::set_callback_obj(SV* object) {
-    if (callbackObj) {
-	SvREFCNT_dec(callbackObj); 
-//	printf("decrementing callbackObj: set_callback");
+    SV *oldRef = &PL_sv_undef;	// default to 'undef'
+    if (callbackObj != NULL) {
+	oldRef = callbackObj;
+	SvREFCNT_dec(oldRef);
     }
     SvREFCNT_inc(object);
     callbackObj = object;
-//    printf("in error: set_callback");
+    return oldRef;
 }
 
 void
