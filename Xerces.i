@@ -1,5 +1,4 @@
 %module "XML::Xerces"
-//#pragma SWIG nowarn=401
 %{
 #include "stdio.h"
 #include "string.h"
@@ -194,6 +193,10 @@ bool DEBUG_UTF8_IN;
 %rename(operator_equal_to) operator==;
 %rename(operator_not_equal_to) operator!=;
 
+/*
+ * Utility Classes
+ */
+
 // both of these static variables cause trouble
 // the transcoding service is only useful to C++ anyway.
 %ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgTransService;
@@ -204,16 +207,31 @@ bool DEBUG_UTF8_IN;
 %ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgDefaultPanicHandler;
 %ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::fgMemoryManager;
 
+// here are some methods that cause trouble that are useless
+%ignore XERCES_CPP_NAMESPACE::XMLPlatformUtils::isAnySlash;
 %ignore openFile(const XMLCh* const);
+
 %include "xercesc/util/PlatformUtils.hpp"
 
-/*
- * Utility Classes
- */
 
-/*
+// XERCES_CPP_NAMESPACE_BEGIN
+// 
+// class XMLTransService;
+// class MemoryManager;
+// 
+// class XMLPlatformUtils {
+//   void Initialize();
+//   void Terminate();
+//   static MemoryManager* fgMemoryManager;
+//   static XMLTransService* fgTransService;
+// };
+// XERCES_CPP_NAMESPACE_END
+
+
 %rename(XMLURL__constructor__base) XMLURL::XMLURL(const   XMLCh* const, 
 						  const XMLCh* const);
+/*
+
 %rename(XMLURL__constructor__text) XMLURL::XMLURL(const XMLCh* const);
 %rename(XMLURL__constructor__copy) XMLURL::XMLURL(const XMLURL&);
 %rename(XMLURL__constructor__url_base) XMLURL::XMLURL(const XMLURL&,
@@ -359,6 +377,7 @@ bool DEBUG_UTF8_IN;
 
 %rename(getType__overload__name) XERCES_CPP_NAMESPACE::AttributeList::getType(const XMLCh* const) const;
 %rename(getValue__overload__name) XERCES_CPP_NAMESPACE::AttributeList::getValue(const XMLCh* const) const;
+//%ignore XERCES_CPP_NAMESPACE::AttributeList::getValue(const char* const) const;
 
 %include "xercesc/sax/AttributeList.hpp"
 

@@ -89,7 +89,6 @@ SWIGIMPORT(swig_type_info *) SWIG_TypeRegister(swig_type_info *);
 SWIGIMPORT(swig_type_info *) SWIG_TypeCheck(char *c, swig_type_info *);
 SWIGIMPORT(void *)           SWIG_TypeCast(swig_type_info *, void *);
 SWIGIMPORT(swig_type_info *) SWIG_TypeDynamicCast(swig_type_info *, void **);
-SWIGIMPORT(const char *)     SWIG_TypeName(const swig_type_info *);
 SWIGIMPORT(swig_type_info *) SWIG_TypeQuery(const char *);
 SWIGIMPORT(void)             SWIG_TypeClientData(swig_type_info *, void *);
 
@@ -157,12 +156,6 @@ SWIG_TypeDynamicCast(swig_type_info *ty, void **ptr)
   return lastty;
 }
 
-/* Return the name associated with this type */
-SWIGRUNTIME(const char *)
-SWIG_TypeName(const swig_type_info *ty) {
-  return ty->name;
-}
-
 /* Search for a swig_type_info structure */
 SWIGRUNTIME(swig_type_info *)
 SWIG_TypeQuery(const char *name) {
@@ -179,7 +172,7 @@ SWIG_TypeQuery(const char *name) {
 SWIGRUNTIME(void)
 SWIG_TypeClientData(swig_type_info *ti, void *clientdata) {
   swig_type_info *tc, *equiv;
-  if (ti->clientdata == clientdata) return;
+  if (ti->clientdata) return;
   ti->clientdata = clientdata;
   equiv = ti->next;
   while (equiv) {
@@ -273,7 +266,7 @@ SWIG_TypeCheck(SV *sv, swig_type_info *ty)
 
 /* Macros for low-level exception handling */
 #define SWIG_fail      goto fail
-#define SWIG_croak(x)  { if ((_swigerr = (const char *) x)) goto fail; }
+#define SWIG_croak(x)  while ((_swigerr = (const char *) x)) goto fail
 #define SWIG_MAX_ERRMSG 256
 
 /* Note: SwigMagicFuncHack is a typedef used to get the C++
@@ -2987,42 +2980,6 @@ XS(_wrap_XMLPlatformUtils_getCurrentDirectory) {
             ST(argvi) = XMLString2Perl(result);
             ++argvi;
         }
-        XSRETURN(argvi);
-        fail:
-        (void) _swigerr;
-    }
-    croak(_swigerr);
-}
-
-XS(_wrap_XMLPlatformUtils_isAnySlash) {
-    char _swigmsg[SWIG_MAX_ERRMSG] = "";
-    const char *_swigerr = _swigmsg;
-    {
-        XMLCh arg1 ;
-        bool result;
-        int argvi = 0;
-        dXSARGS;
-        
-        if ((items < 1) || (items > 1)) {
-            SWIG_croak("Usage: XMLPlatformUtils_isAnySlash(c);");
-        }
-        arg1 = (XMLCh) SvUV(ST(0));
-        {
-            try {
-                result = (bool)XERCES_CPP_NAMESPACE::XMLPlatformUtils::isAnySlash(arg1);
-                
-            }
-            catch (const XMLException& e)
-            {
-                makeXMLException(e);
-            }
-            catch (...)
-            {
-                croak("%s", "Handling Unknown exception");
-            }
-        }
-        ST(argvi) = sv_newmortal();
-        sv_setiv(ST(argvi++), (IV) result);
         XSRETURN(argvi);
         fail:
         (void) _swigerr;
@@ -53390,7 +53347,6 @@ static swig_command_info swig_commands[] = {
 {"XML::Xercesc::XMLPlatformUtils_resetFile", _wrap_XMLPlatformUtils_resetFile},
 {"XML::Xercesc::XMLPlatformUtils_getFullPath", _wrap_XMLPlatformUtils_getFullPath},
 {"XML::Xercesc::XMLPlatformUtils_getCurrentDirectory", _wrap_XMLPlatformUtils_getCurrentDirectory},
-{"XML::Xercesc::XMLPlatformUtils_isAnySlash", _wrap_XMLPlatformUtils_isAnySlash},
 {"XML::Xercesc::XMLPlatformUtils_removeDotSlash", _wrap_XMLPlatformUtils_removeDotSlash},
 {"XML::Xercesc::XMLPlatformUtils_removeDotDotSlash", _wrap_XMLPlatformUtils_removeDotDotSlash},
 {"XML::Xercesc::XMLPlatformUtils_isRelative", _wrap_XMLPlatformUtils_isRelative},

@@ -474,7 +474,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *resetFile = *XML::Xercesc::XMLPlatformUtils_resetFile;
 *getFullPath = *XML::Xercesc::XMLPlatformUtils_getFullPath;
 *getCurrentDirectory = *XML::Xercesc::XMLPlatformUtils_getCurrentDirectory;
-*isAnySlash = *XML::Xercesc::XMLPlatformUtils_isAnySlash;
 *removeDotSlash = *XML::Xercesc::XMLPlatformUtils_removeDotSlash;
 *removeDotDotSlash = *XML::Xercesc::XMLPlatformUtils_removeDotDotSlash;
 *isRelative = *XML::Xercesc::XMLPlatformUtils_isRelative;

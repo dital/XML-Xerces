@@ -106,3 +106,4 @@ t/DOMNodeIterator.t
 t/DOMTreeWalker.t
 t/XMLScanner.t
 typemaps.i
+META.yml                                 Module meta-data (added by MakeMaker)
