@@ -1,0 +1,51 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE s1 SYSTEM "./dtd/document.dtd">
+
+<s1 title="&XercesPFullName;">
+
+	<s2 title="&XercesPFullName; version &XercesPVersion;">
+
+<p>&XercesPName; delivers the benefits of the &XercesCName; DOM Parser in Perl5.
+&XercesPName; includes a collection of Perl5 wrapper objects that internally use
+their &XercesCName; counterparts for high-performance, scalable and localizable
+XML DOM parsing.</p>
+</s2>
+
+	<s2 title="Applications of &XercesPName;">
+
+<p>&XercesPName; has rich generating and validating capabilities. The parser is used for:</p>
+
+<ul>
+    <li>Building XML-savvy Web servers</li>
+    <li>Building next generation of vertical applications that use XML as
+      their data format</li>
+    <li>On-the-fly validation for creating XML editors</li>
+    <li>Ensuring the integrity of e-business data expressed in XML</li>
+    <li>Building truly internationalized XML applications</li>
+</ul>
+    </s2>
+
+    <s2 title="Features">
+<ul>
+<li>Programmatic generation, validation of XML</li>
+<li>Conforms to DOM Level 1 Spec</li>
+<li>High performance</li>
+<li>Customizable error handling</li>
+<li>Source code, samples, and docs provided</li>
+<li>All the underlying benefits of &XercesCName;</li>
+</ul>
+    </s2>
+
+    <s2 title="Supported Platforms">
+    <ul>
+        <li>Win32 (MSVC 6.0 compiler)</li>
+    </ul>
+    </s2>
+
+    <s2 title="Platforms Coming Soon">
+    <ul>
+        <li>Linux (RedHat 6.0)</li>
+    </ul>
+    </s2>
+
+</s1>

@@ -1,0 +1,293 @@
+High Level issues:
+=================
+If you want to help in any of the following areas ... PLEASE jump in.
+
+
+Platforms:
+
+Get to work on other platforms (See INSTALL for details).
+
+Quality:
+
+* Complete test suite to test all APIs.
+* Performance analysys and improvements.
+
+Documentation:
+
+* Move all API docs into POD, so they are accessible via perldoc
+
+Samples:
+
+* More example applications
+
+
+Internals:
+==========
+Thu Mar 21 08:49:08 MST 2002
+* implement a way to export IDOM documents (see RE: IDOM memory model
+  in xerces-c-dev)
+
+Fri Jan 18 23:36:20 MST 2002
+* DOM_Document::getElementById() segfaults on undef ID
+
+Fri Nov  2 23:07:43 MST 2001
+* Make XML::Xerces::XMLString class and have SWIG convert all XMLCh
+  arrays to these. This should eliminate a lot of transcoding.
+* Provide all needed XMLString operators:
+  - stringify
+  - . (.=)
+  - eq (neq)
+* Remove DOMString support
+
+Mon Sep 24 20:17:58 MDT 2001
+Fixed ==> * REAL EXCEPTION HANDLING via eval{}/die();
+  - throw exception objects
+Fixed ==>  - never call cerr, use croak()
+* Finish conversion of Xerces.i to SWIG-1.3.8
+  - sax
+  - sax2
+Fixed ==>  - util
+* overloaded constructors for XMLPScanToken
+* overloaded constructors for IDOM_DOMException
+* overloaded constructors for IDOM_RangeException
+* overloaded constructors for IDOM_TreeWalker
+* overloaded constructors for IDOM_NodeList
+* overloaded constructors for IDOM_Notation
+* overloaded constructors for IDOM_NamedNodeMap
+* overloaded constructors for IDOM_EntityReference
+* overloaded constructors for IDOM_Element
+* overloaded constructors for IDOM_Document
+* overloaded constructors for IDOM_DocumentFragment
+* overloaded constructors for IDOM_DocumentType
+* overloaded constructors for IDOM_Comment
+* overloaded constructors for IDOM_CharacterData
+* overloaded constructors for IDOM_CDATASection
+* overloaded constructors for IDOM_Text
+* overloaded constructors for IDOM_Node
+* overloaded constructors for QName
+* overloaded constructors for XMLUri
+* overloaded constructors for SAX*Exception
+Fixed ==>* overloaded method for AttributeList::getValue
+Fixed ==>* overloaded method for AttributeList::getType
+Fixed ==>* overloaded method for XMLReaderFactory::createReaderFactory
+Fixed ==>* overloaded method for Attributes::getValue
+Fixed ==>* overloaded method for Attributes::getType
+Fixed ==>* overloaded method for Attributes::getIndex
+
+* Add tests for IDOM untested features
+* Add tests for DOM untested features (should we do this if DOM is
+  to be replaced by IDOM ==> low priority)
+
+Mon Sep 10 21:28:51 MDT 2001
+Fixed ==> * Fix MemBufInputSource::new() so that it doesn't require the string
+* check memory repeated re-use of parser
+* only create DESTROY methods for objects with C++ data to be deleted,
+  that should be directly invoked, i.e. not inherited methods
+
+Wed Sep  5 22:46:15 MDT 2001
+Fixed ==> * Fix all DESTROY methods
+Fixed ==> * check memory usage
+
+Fri Jun 22 09:55:36 MDT 2001
+Fixed ==> * add DOM_DOMImplementation
+
+Mon Jun 18 23:50:40 MDT 2001
+* List of methods which throw exceptions:
+  - XMLException
+Fixed ==>     * Parser::parse 
+Fixed ==>     * SAX2XMLReader::parse 
+
+The following are all caught by error handlers already
+Fixed ==>  - SAXException
+    * ContentHandler::characters 
+    * ContentHandler::endDocument 
+    * ContentHandler::endElement
+    * ContentHandler::endPrefixMapping
+    * ContentHandler::ignorableWhitespace
+    * ContentHandler::ProcessingInstruction
+    * ContentHandler::startDocument 
+    * ContentHandler::startElement
+    * ContentHandler::startPrefixMapping
+    * ContentHandler::skippedEntity
+    * DefaultHandler::characters 
+    * DefaultHandler::endDocument 
+    * DefaultHandler::endElement
+    * DefaultHandler::endPrefixMapping
+    * DefaultHandler::ignorableWhitespace
+    * DefaultHandler::ProcessingInstruction
+    * DefaultHandler::startDocument 
+    * DefaultHandler::startElement
+    * DefaultHandler::startPrefixMapping
+    * DefaultHandler::skippedEntity
+    * DefaultHandler::comment
+    * DefaultHandler::endCDATA
+    * DefaultHandler::endDTD
+    * DefaultHandler::endEntity
+    * DefaultHandler::startCDATA
+    * DefaultHandler::startDTD
+    * DefaultHandler::startEntity
+    * DefaultHandler::error
+    * DefaultHandler::fatalError
+    * DefaultHandler::resolveEntity
+    * DefaultHandler::warning
+    * DocumentHandler::characters 
+    * DocumentHandler::endDocument
+    * DocumentHandler::endElement
+    * DocumentHandler::startDocument
+    * DocumentHandler::startElement
+    * DocumentHandler::ignorableWhitespace
+    * DocumentHandler::processingInstruction
+    * ErrorHandler::error
+    * ErrorHandler::fatalError
+    * ErrorHandler::warning
+    * EntityResolver::resolveEntity
+    * HandlerBase::characters 
+    * HandlerBase::endDocument 
+    * HandlerBase::endElement 
+    * HandlerBase::error 
+    * HandlerBase::fatalError 
+    * HandlerBase::ignorableWhitespace 
+    * HandlerBase::processingInstruction 
+    * HandlerBase::resolveEntity 
+    * HandlerBase::startDocument 
+    * HandlerBase::startElement 
+    * HandlerBase::warning 
+    * LexicalHandler::comment 
+    * LexicalHandler::endCDATA 
+    * LexicalHandler::endDTD 
+    * LexicalHandler::endEntity 
+    * LexicalHandler::startCDATA 
+    * LexicalHandler::startDTD 
+    * LexicalHandler::startEntity 
+    * Parser::parse 
+    * SAX2XMLReader::parse 
+
+Fixed ==>   - SAXNotSupportedException
+Fixed ==>     * SAX2XMLReader::setFeature 
+Fixed ==>     * SAX2XMLReader::setProperty 
+Fixed ==> 
+Fixed ==>   - SAXNotRecognizedException
+Fixed ==>     * SAX2XMLReader::getFeature 
+Fixed ==>     * SAX2XMLReader::getProperty 
+Fixed ==>     * SAX2XMLReader::setFeature 
+Fixed ==>     * SAX2XMLReader::setProperty 
+
+Fixed ==>   - DOMException
+    * DOM_CharacterData::appendData
+    * DOM_CharacterData::deleteData
+    * DOM_CharacterData::getData
+    * DOM_CharacterData::insertData
+    * DOM_CharacterData::replaceData
+    * DOM_CharacterData::substringData
+    * DOM_DOMImplementation::createDocument 
+    * DOM_DOMImplementation::createDocumentType
+    * DOM_Element::removeAttribute 
+    * DOM_Element::removeAttributeNS 
+    * DOM_Element::removeAttributeNode 
+    * DOM_Element::setAttribute 
+    * DOM_Element::setAttributeNS 
+    * DOM_Element::setAttributeNode 
+    * DOM_Element::setAttributeNodeNS 
+    * DOM_NamedNodeMap::removeNamedItem 
+    * DOM_NamedNodeMap::removeNamedItemNS 
+    * DOM_NamedNodeMap::setNamedItem 
+    * DOM_NamedNodeMap::setNamedItemNS 
+    * DOM_Node::appendChild 
+    * DOM_Node::getNodeValue 
+    * DOM_Node::insertBefore 
+    * DOM_Node::removeChild 
+    * DOM_Node::replaceChild 
+    * DOM_Node::setPrefix 
+    * DOM_NodeIterator::nextNode 
+    * DOM_NodeIterator::previousNode 
+    * DOM_ProcessingInstruction::getData 
+    * DOM_Text::splitText 
+    * DTDHandler::notationDecl 
+    * DTDHandler::unparsedEntityDecl 
+
+* List of polymorphic Methods:
+Fixed ==>  - AttributeList::getType
+Fixed ==>  - AttributeList::getValue
+Fixed ==>   - Attributes::getType
+Fixed ==>   - Attributes::getValue
+Fixed ==>   - Attributes::getIndex
+Fixed ==>   - DOM_Attr::DOM_Attr
+Fixed ==>   - DOM_Attr::operator=
+  - DOM_CDATA::DOM_CDATA
+Fixed ==>   - DOM_CDATA::operator=
+  - DOM_CharacterData::DOM_CharacterData
+Fixed ==>   - DOM_CharacterData::operator=
+  - DOM_Comment::DOM_Comment
+Fixed ==>   - DOM_Comment::operator=
+  - DOM_Document::DOM_Document
+Fixed ==>   - DOM_Document::operator=
+  - DOM_DocumentFragment::DOM_DocumentFragment
+Fixed ==>   - DOM_DocumentFragment::operator=
+  - DOM_DocumentType::DOM_DocumentType
+Fixed ==>   - DOM_DocumentType::operator=
+  - DOM_Element::DOM_Element
+Fixed ==>   - DOM_Element::operator=
+  - DOM_NamedNodeMap::DOM_NamedNodeMap
+Fixed ==>   - DOM_NamedNodeMap::operator=
+Fixed ==>   - DOM_NamedNodeMap::operator==
+Fixed ==>   - DOM_NamedNodeMap::operator!=
+Fixed ==>   - DOM_Node::operator=
+Fixed ==>   - DOM_Node::operator==
+Fixed ==>   - DOM_Node::operator!=
+  - DOM_NodeIterator::DOM_NodeIterator
+Fixed ==>   - DOM_NodeIterator::operator=
+Fixed ==>   - DOM_NodeIterator::operator==
+Fixed ==>   - DOM_NodeIterator::operator!=
+  - DOM_ProcessingInstruction::DOM_ProcessingInstruction
+Fixed ==>   - DOM_ProcessingInstruction::operator=
+  - DOM_Text::DOM_Text
+Fixed ==>   - DOM_Text::operator=
+Fixed ==>   - Parser::parse
+Fixed ==>   - Parser::parseFirst
+Fixed ==>   - SAX2XMLReader::parse
+
+
+Tue May 29 11:54:15 MDT 2001
+Fixed ==> * add exception handling to Xerces.C to handle parse exceptions
+
+Mon May 28 20:24:51 MDT 2001
+Fixed ==> * AttributeList needs to get its methods
+Fixed ==> * post-source needs to handle the new SWIG_CheckType()
+Fixed ==> * add polymorphic get{Name,Value,Type} to AttributeList
+
+Sat May 12 21:43:36 MDT 2001
+Fixed ==> * setAttribute('foo'=>undef) causes segfault
+
+Sat May  5 18:28:19 MDT 2001
+Fixed ==> * Find all overloaded methods that aren't being supported
+Fixed ==> * add the rest of the handler classes:
+  - EntityResolver
+  - DTDHandler
+  - HandlerBase
+  - DefaultHandler
+  - LexicalHandler
+FIXED => * add test for SAX2Count.pl
+FIXED => * update SAX2Count.pl to new handler API
+
+Sun Apr 15 23:38:26 MST 2001
+Fixed ==> * expand XMLReaderFactory::createXMLReader to support (classname)
+FIXED => * add the rest of the DefaultHandler interface to perlDefaultHandler
+FIXED => * rename perlDocumentHandler to perlHandlerBase
+FIXED => * split perlErrorHandler.hpp into .cpp
+
+Sat Apr 14 17:30:46 MST 2001
+Fixed ==> * expend contrustor for XMLURL to support XMLURL(baseURL,relativeURL)
+  and XMLURL(XMLURL&)
+Fixed ==> * expend XMLURL::setURL() to support (baseURL,relativeURL)
+Fixed ==> * expend XMLURL::makeRelativeTo to support (XMLCh baseURL)
+* Implement a tied hash interface for NamedNodeMap
+* Implement a tied array for NodeList
+
+
+
+
+### *** emacs file mode definition ***
+### Local Variables: 
+### mode:filladapt
+### mode:text
+### End: 
