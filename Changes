@@ -1,6 +1,10 @@
 Revision history for Perl extension Genex.
 
-2.3.0-4 
+2.3.0-5
+	- fifth bugfix release of 2.3.0 series.
+	- added new samples: validator.pl, memtest.pl, xerces-memtest.pl
+
+2.3.0-4 Sun Nov  10 12:03:30 IST 2003
 	- fourth bugfix release of 2.3.0 series.
         - exposed new API components for DTDValidator and SchemaValidator
 	- added XML::Xerces::XMLCatalogResolver, for a standard way of

@@ -28,7 +28,7 @@ package XML::Xerces;
 use Carp;
 use vars qw(@EXPORT_OK $VERSION);
 @EXPORT_OK = qw(error);
-$VERSION = q[2.3.0-4];
+$VERSION = 250.0;
 
 sub error {
   my $error = shift;
@@ -445,16 +445,12 @@ sub get_text {
 }
 
 package XML::Xerces::XMLCatalogResolver;
-use XML::Xerces qw(error);
 use strict;
 use Carp;
 use vars qw($VERSION
 	    @ISA
 	    @EXPORT
 	    @EXPORT_OK
-	    $CATALOG
-	    %MAPS
-	    %REMAPS
 	   );
 require Exporter;
 
@@ -465,16 +461,17 @@ sub new {
   my $pkg = shift;
   my $catalog = shift;
   my $self = bless {}, $pkg;
-  $self->initialize($catalog);
+  $self->catalog($catalog);
+  $self->initialize()
+    if defined $catalog;
   return $self;
 }
 
 sub initialize {
   my $self = shift;
-
-  # allow callers to set the global variable
-  $CATALOG = shift
-    unless $CATALOG;
+  my $CATALOG = $self->catalog();
+  XML::Xerces::error (__PACKAGE__ . ": Must set catalog before calling initialize")
+      unless defined $CATALOG;
 
   my $DOM = XML::Xerces::XercesDOMParser->new();
   my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
@@ -482,17 +479,43 @@ sub initialize {
 
   # we parse the example XML Catalog
   eval{$DOM->parse($CATALOG)};
-  error ($@, __PACKAGE__ . ": Couldn't parse catalog: $CATALOG")
+  XML::Xerces::error ($@, __PACKAGE__ . ": Couldn't parse catalog: $CATALOG")
       if $@;
 
-  # now retrieve the mappings
+  # now retrieve the mappings and store them
   my $doc = $DOM->getDocument();
-  my @Maps = $doc->getElementsByTagName('Map');
-  %MAPS = map {($_->getAttribute('PublicId'),
-		   $_->getAttribute('HRef'))} @Maps;
-  my @Remaps = $doc->getElementsByTagName('Remap');
-  %REMAPS = map {($_->getAttribute('SystemId'),
-		     $_->getAttribute('HRef'))} @Remaps;
+  my @maps = $doc->getElementsByTagName('Map');
+  my %maps = map {($_->getAttribute('PublicId'),
+		   $_->getAttribute('HRef'))} @maps;
+  $self->maps(\%maps);
+  my @remaps = $doc->getElementsByTagName('Remap');
+  my %remaps = map {($_->getAttribute('SystemId'),
+		     $_->getAttribute('HRef'))} @remaps;
+  $self->remaps(\%remaps);
+}
+
+sub catalog {
+  my $self = shift;
+  if (@_) {
+    $self->{__CATALOG} = shift;
+  }
+  return $self->{__CATALOG};
+}
+
+sub maps {
+  my $self = shift;
+  if (@_) {
+    $self->{__MAPS} = shift;
+  }
+  return $self->{__MAPS};
+}
+
+sub remaps {
+  my $self = shift;
+  if (@_) {
+    $self->{__REMAPS} = shift;
+  }
+  return $self->{__REMAPS};
 }
 
 sub resolve_entity {
@@ -500,14 +523,20 @@ sub resolve_entity {
 #   print STDERR "Got PUBLIC: $pub\n";
 #   print STDERR "Got SYSTEM: $sys\n";
 
+  XML::Xerces::error (__PACKAGE__ . ": Must call initialize before using the resolver")
+      unless defined $self->maps or defined $self->remaps;
+
   # now check which one we were asked for
   my $href;
   if ($pub) {
-    $href = $MAPS{$pub};
-  } elsif ($sys) {
-    $href = $REMAPS{$sys};
-  } else {
-    croak("Neither PublicId or SystemId were defined");
+    $href = $self->maps->{$pub};
+  }
+  if ((not defined $href) and $sys) {
+    $href = $self->remaps->{$sys};
+  }
+  if (not defined $href) {
+    croak("could not resolve PUBLIC id:[$pub] or SYSTEM id: [$sys] using catalog: ["
+	  . $self->catalog . "]");
   }
 
   my $is = eval {XML::Xerces::LocalFileInputSource->new($href)};
@@ -582,6 +611,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
+*fgArrayMemoryManager = *XML::Xercesc::XMLPlatformUtils_fgArrayMemoryManager;
+*fgAtomicMutex = *XML::Xercesc::XMLPlatformUtils_fgAtomicMutex;
 *Initialize = *XML::Xercesc::XMLPlatformUtils_Initialize;
 *Terminate = *XML::Xercesc::XMLPlatformUtils_Terminate;
 *panic = *XML::Xercesc::XMLPlatformUtils_panic;
@@ -614,12 +645,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *strictIANAEncoding = *XML::Xercesc::XMLPlatformUtils_strictIANAEncoding;
 *isStrictIANAEncoding = *XML::Xercesc::XMLPlatformUtils_isStrictIANAEncoding;
 *alignPointerForNewBlockAllocation = *XML::Xercesc::XMLPlatformUtils_alignPointerForNewBlockAllocation;
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_XMLPlatformUtils(@_);
-    bless $self, $pkg if defined($self);
-}
-
 
 sub DISOWN {
     my $self = shift;
@@ -641,7 +666,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 use overload
     "==" => sub { $_[0]->operator_equal_to($_[1])},
     "!=" => sub { $_[0]->operator_not_equal_to($_[1])},
-    "=" => sub { $_[0]->operator_assignment($_[1])},
     "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
@@ -652,6 +676,7 @@ use overload
 *Protocols_Count = *XML::Xercesc::XMLURL_Protocols_Count;
 *Unknown = *XML::Xercesc::XMLURL_Unknown;
 *lookupByName = *XML::Xercesc::XMLURL_lookupByName;
+*parse = *XML::Xercesc::XMLURL_parse;
 sub new {
     my $pkg = shift;
     my $self = XML::Xercesc::new_XMLURL(@_);
@@ -659,7 +684,6 @@ sub new {
 }
 
 
-*operator_assignment = *XML::Xercesc::XMLURL_operator_assignment;
 *operator_equal_to = *XML::Xercesc::XMLURL_operator_equal_to;
 *operator_not_equal_to = *XML::Xercesc::XMLURL_operator_not_equal_to;
 *getFragment = *XML::Xercesc::XMLURL_getFragment;
@@ -695,25 +719,16 @@ sub ACQUIRE {
 
 package XML::Xerces::XMLUri;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_XMLUri(@_);
-    bless $self, $pkg if defined($self);
-}
-
-*operator_assignment = *XML::Xercesc::XMLUri_operator_assignment;
 
 *getUriText = *XML::Xercesc::XMLUri_getUriText;
 *getScheme = *XML::Xercesc::XMLUri_getScheme;
 *getUserInfo = *XML::Xercesc::XMLUri_getUserInfo;
 *getHost = *XML::Xercesc::XMLUri_getHost;
 *getPort = *XML::Xercesc::XMLUri_getPort;
+*getRegBasedAuthority = *XML::Xercesc::XMLUri_getRegBasedAuthority;
 *getPath = *XML::Xercesc::XMLUri_getPath;
 *getQueryString = *XML::Xercesc::XMLUri_getQueryString;
 *getFragment = *XML::Xercesc::XMLUri_getFragment;
@@ -721,10 +736,18 @@ sub new {
 *setUserInfo = *XML::Xercesc::XMLUri_setUserInfo;
 *setHost = *XML::Xercesc::XMLUri_setHost;
 *setPort = *XML::Xercesc::XMLUri_setPort;
+*setRegBasedAuthority = *XML::Xercesc::XMLUri_setRegBasedAuthority;
 *setPath = *XML::Xercesc::XMLUri_setPath;
 *setQueryString = *XML::Xercesc::XMLUri_setQueryString;
 *setFragment = *XML::Xercesc::XMLUri_setFragment;
 *isURIString = *XML::Xercesc::XMLUri_isURIString;
+*isValidURI = *XML::Xercesc::XMLUri_isValidURI;
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_XMLUri(@_);
+    bless $self, $pkg if defined($self);
+}
+
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1205,15 +1228,33 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *PD_MapAndSum = *XML::Xercesc::XMLExcepts_PD_MapAndSum;
 *PD_InvalidContentType = *XML::Xercesc::XMLExcepts_PD_InvalidContentType;
 *NodeIDMap_GrowErr = *XML::Xercesc::XMLExcepts_NodeIDMap_GrowErr;
+*XSer_ProtoType_Null_ClassName = *XML::Xercesc::XMLExcepts_XSer_ProtoType_Null_ClassName;
+*XSer_ProtoType_NameLen_Dif = *XML::Xercesc::XMLExcepts_XSer_ProtoType_NameLen_Dif;
+*XSer_ProtoType_Name_Dif = *XML::Xercesc::XMLExcepts_XSer_ProtoType_Name_Dif;
+*XSer_InStream_Read_LT_Req = *XML::Xercesc::XMLExcepts_XSer_InStream_Read_LT_Req;
+*XSer_InStream_Read_OverFlow = *XML::Xercesc::XMLExcepts_XSer_InStream_Read_OverFlow;
+*XSer_Storing_Violation = *XML::Xercesc::XMLExcepts_XSer_Storing_Violation;
+*XSer_StoreBuffer_Violation = *XML::Xercesc::XMLExcepts_XSer_StoreBuffer_Violation;
+*XSer_LoadPool_UppBnd_Exceed = *XML::Xercesc::XMLExcepts_XSer_LoadPool_UppBnd_Exceed;
+*XSer_LoadPool_NoTally_ObjCnt = *XML::Xercesc::XMLExcepts_XSer_LoadPool_NoTally_ObjCnt;
+*XSer_Loading_Violation = *XML::Xercesc::XMLExcepts_XSer_Loading_Violation;
+*XSer_LoadBuffer_Violation = *XML::Xercesc::XMLExcepts_XSer_LoadBuffer_Violation;
+*XSer_Inv_ClassIndex = *XML::Xercesc::XMLExcepts_XSer_Inv_ClassIndex;
+*XSer_Inv_FillBuffer_Size = *XML::Xercesc::XMLExcepts_XSer_Inv_FillBuffer_Size;
+*XSer_Inv_checkFillBuffer_Size = *XML::Xercesc::XMLExcepts_XSer_Inv_checkFillBuffer_Size;
+*XSer_Inv_checkFlushBuffer_Size = *XML::Xercesc::XMLExcepts_XSer_Inv_checkFlushBuffer_Size;
+*XSer_Inv_Null_Pointer = *XML::Xercesc::XMLExcepts_XSer_Inv_Null_Pointer;
+*XSer_Inv_Buffer_Len = *XML::Xercesc::XMLExcepts_XSer_Inv_Buffer_Len;
+*XSer_CreateObject_Fail = *XML::Xercesc::XMLExcepts_XSer_CreateObject_Fail;
+*XSer_ObjCount_UppBnd_Exceed = *XML::Xercesc::XMLExcepts_XSer_ObjCount_UppBnd_Exceed;
+*XSer_GrammarPool_Locked = *XML::Xercesc::XMLExcepts_XSer_GrammarPool_Locked;
+*XSer_GrammarPool_Empty = *XML::Xercesc::XMLExcepts_XSer_GrammarPool_Empty;
+*XSer_GrammarPool_NotEmpty = *XML::Xercesc::XMLExcepts_XSer_GrammarPool_NotEmpty;
+*XSer_StringPool_NotEmpty = *XML::Xercesc::XMLExcepts_XSer_StringPool_NotEmpty;
+*XSer_BinaryData_Version_NotSupported = *XML::Xercesc::XMLExcepts_XSer_BinaryData_Version_NotSupported;
 *F_HighBounds = *XML::Xercesc::XMLExcepts_F_HighBounds;
 *E_LowBounds = *XML::Xercesc::XMLExcepts_E_LowBounds;
 *E_HighBounds = *XML::Xercesc::XMLExcepts_E_HighBounds;
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_XMLExcepts(@_);
-    bless $self, $pkg if defined($self);
-}
-
 
 sub DISOWN {
     my $self = shift;
@@ -1232,9 +1273,6 @@ sub ACQUIRE {
 
 package XML::Xerces::XMLException;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
@@ -1246,7 +1284,6 @@ use overload
 *getSrcLine = *XML::Xercesc::XMLException_getSrcLine;
 *getErrorType = *XML::Xercesc::XMLException_getErrorType;
 *setPosition = *XML::Xercesc::XMLException_setPosition;
-*operator_assignment = *XML::Xercesc::XMLException_operator_assignment;
 *reinitMsgMutex = *XML::Xercesc::XMLException_reinitMsgMutex;
 *reinitMsgLoader = *XML::Xercesc::XMLException_reinitMsgLoader;
 sub DISOWN {
@@ -1309,6 +1346,12 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *setCreateReason = *XML::Xercesc::XMLElementDecl_setCreateReason;
 *setId = *XML::Xercesc::XMLElementDecl_setId;
 *setExternalElemDeclaration = *XML::Xercesc::XMLElementDecl_setExternalElemDeclaration;
+*Schema = *XML::Xercesc::XMLElementDecl_Schema;
+*DTD = *XML::Xercesc::XMLElementDecl_DTD;
+*UnKnown = *XML::Xercesc::XMLElementDecl_UnKnown;
+*getObjectType = *XML::Xercesc::XMLElementDecl_getObjectType;
+*storeElementDecl = *XML::Xercesc::XMLElementDecl_storeElementDecl;
+*loadElementDecl = *XML::Xercesc::XMLElementDecl_loadElementDecl;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1384,12 +1427,14 @@ sub new {
 *getPublicId = *XML::Xercesc::XMLNotationDecl_getPublicId;
 *getSystemId = *XML::Xercesc::XMLNotationDecl_getSystemId;
 *getBaseURI = *XML::Xercesc::XMLNotationDecl_getBaseURI;
+*getNameSpaceId = *XML::Xercesc::XMLNotationDecl_getNameSpaceId;
 *getMemoryManager = *XML::Xercesc::XMLNotationDecl_getMemoryManager;
 *setId = *XML::Xercesc::XMLNotationDecl_setId;
 *setName = *XML::Xercesc::XMLNotationDecl_setName;
 *setPublicId = *XML::Xercesc::XMLNotationDecl_setPublicId;
 *setSystemId = *XML::Xercesc::XMLNotationDecl_setSystemId;
 *setBaseURI = *XML::Xercesc::XMLNotationDecl_setBaseURI;
+*setNameSpaceId = *XML::Xercesc::XMLNotationDecl_setNameSpaceId;
 *getKey = *XML::Xercesc::XMLNotationDecl_getKey;
 sub DISOWN {
     my $self = shift;
@@ -1418,6 +1463,9 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *findAttDef = *XML::Xercesc::XMLAttDefList_findAttDef;
 *nextElement = *XML::Xercesc::XMLAttDefList_nextElement;
 *Reset = *XML::Xercesc::XMLAttDefList_Reset;
+*getAttDefCount = *XML::Xercesc::XMLAttDefList_getAttDefCount;
+*getAttDef = *XML::Xercesc::XMLAttDefList_getAttDef;
+*getMemoryManager = *XML::Xercesc::XMLAttDefList_getMemoryManager;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1557,6 +1605,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 *DTDGrammarType = *XML::Xercesc::Grammar_DTDGrammarType;
 *SchemaGrammarType = *XML::Xercesc::Grammar_SchemaGrammarType;
+*UnKnown = *XML::Xercesc::Grammar_UnKnown;
 *UNKNOWN_SCOPE = *XML::Xercesc::Grammar_UNKNOWN_SCOPE;
 *TOP_LEVEL_SCOPE = *XML::Xercesc::Grammar_TOP_LEVEL_SCOPE;
 
@@ -1571,6 +1620,10 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *putNotationDecl = *XML::Xercesc::Grammar_putNotationDecl;
 *setValidated = *XML::Xercesc::Grammar_setValidated;
 *reset = *XML::Xercesc::Grammar_reset;
+*setGrammarDescription = *XML::Xercesc::Grammar_setGrammarDescription;
+*getGrammarDescription = *XML::Xercesc::Grammar_getGrammarDescription;
+*storeGrammar = *XML::Xercesc::Grammar_storeGrammar;
+*loadGrammar = *XML::Xercesc::Grammar_loadGrammar;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1620,6 +1673,7 @@ sub new {
 *getDOMTypeInfoUri = *XML::Xercesc::DTDElementDecl_getDOMTypeInfoUri;
 *addAttDef = *XML::Xercesc::DTDElementDecl_addAttDef;
 *setModelType = *XML::Xercesc::DTDElementDecl_setModelType;
+*getObjectType = *XML::Xercesc::DTDElementDecl_getObjectType;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1637,9 +1691,6 @@ sub ACQUIRE {
 
 package XML::Xerces::DTDElementDeclEnumerator;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
@@ -1650,10 +1701,10 @@ sub new {
 }
 
 
-*operator_assignment = *XML::Xercesc::DTDElementDeclEnumerator_operator_assignment;
 *hasMoreElements = *XML::Xercesc::DTDElementDeclEnumerator_hasMoreElements;
 *nextElement = *XML::Xercesc::DTDElementDeclEnumerator_nextElement;
 *Reset = *XML::Xercesc::DTDElementDeclEnumerator_Reset;
+*size = *XML::Xercesc::DTDElementDeclEnumerator_size;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1704,9 +1755,6 @@ sub ACQUIRE {
 
 package XML::Xerces::DTDEntityDeclEnumerator;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
@@ -1717,10 +1765,10 @@ sub new {
 }
 
 
-*operator_assignment = *XML::Xercesc::DTDEntityDeclEnumerator_operator_assignment;
 *hasMoreElements = *XML::Xercesc::DTDEntityDeclEnumerator_hasMoreElements;
 *nextElement = *XML::Xercesc::DTDEntityDeclEnumerator_nextElement;
 *Reset = *XML::Xercesc::DTDEntityDeclEnumerator_Reset;
+*size = *XML::Xercesc::DTDEntityDeclEnumerator_size;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1741,12 +1789,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces XML::Xerces::XMLAttDefList );
 %OWNER = ();
 %ITERATORS = ();
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_DTDAttDefList(@_);
-    bless $self, $pkg if defined($self);
-}
-
 
 *hasMoreElements = *XML::Xercesc::DTDAttDefList_hasMoreElements;
 *isEmpty = *XML::Xercesc::DTDAttDefList_isEmpty;
@@ -1754,6 +1796,14 @@ sub new {
 *findAttDef = *XML::Xercesc::DTDAttDefList_findAttDef;
 *nextElement = *XML::Xercesc::DTDAttDefList_nextElement;
 *Reset = *XML::Xercesc::DTDAttDefList_Reset;
+*getAttDefCount = *XML::Xercesc::DTDAttDefList_getAttDefCount;
+*getAttDef = *XML::Xercesc::DTDAttDefList_getAttDef;
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDAttDefList(@_);
+    bless $self, $pkg if defined($self);
+}
+
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1833,7 +1883,10 @@ sub new {
 *getEntityEnumerator = *XML::Xercesc::DTDGrammar_getEntityEnumerator;
 *getNotationEnumerator = *XML::Xercesc::DTDGrammar_getNotationEnumerator;
 *setRootElemId = *XML::Xercesc::DTDGrammar_setRootElemId;
+*setGrammarDescription = *XML::Xercesc::DTDGrammar_setGrammarDescription;
+*getGrammarDescription = *XML::Xercesc::DTDGrammar_getGrammarDescription;
 *putEntityDecl = *XML::Xercesc::DTDGrammar_putEntityDecl;
+*reinitDfltEntities = *XML::Xercesc::DTDGrammar_reinitDfltEntities;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1920,6 +1973,7 @@ sub new {
 *getAttDef = *XML::Xercesc::SchemaElementDecl_getAttDef;
 *getAttWildCard = *XML::Xercesc::SchemaElementDecl_getAttWildCard;
 *getModelType = *XML::Xercesc::SchemaElementDecl_getModelType;
+*getPSVIScope = *XML::Xercesc::SchemaElementDecl_getPSVIScope;
 *getDatatypeValidator = *XML::Xercesc::SchemaElementDecl_getDatatypeValidator;
 *getEnclosingScope = *XML::Xercesc::SchemaElementDecl_getEnclosingScope;
 *getFinalSet = *XML::Xercesc::SchemaElementDecl_getFinalSet;
@@ -1941,7 +1995,9 @@ sub new {
 *getMemberTypeName = *XML::Xercesc::SchemaElementDecl_getMemberTypeName;
 *getDOMTypeInfoUri = *XML::Xercesc::SchemaElementDecl_getDOMTypeInfoUri;
 *getDOMTypeInfoName = *XML::Xercesc::SchemaElementDecl_getDOMTypeInfoName;
+*setElemId = *XML::Xercesc::SchemaElementDecl_setElemId;
 *setModelType = *XML::Xercesc::SchemaElementDecl_setModelType;
+*setPSVIScope = *XML::Xercesc::SchemaElementDecl_setPSVIScope;
 *setDatatypeValidator = *XML::Xercesc::SchemaElementDecl_setDatatypeValidator;
 *setEnclosingScope = *XML::Xercesc::SchemaElementDecl_setEnclosingScope;
 *setFinalSet = *XML::Xercesc::SchemaElementDecl_setFinalSet;
@@ -1961,6 +2017,7 @@ sub new {
 *addIdentityConstraint = *XML::Xercesc::SchemaElementDecl_addIdentityConstraint;
 *getIdentityConstraintCount = *XML::Xercesc::SchemaElementDecl_getIdentityConstraintCount;
 *getIdentityConstraintAt = *XML::Xercesc::SchemaElementDecl_getIdentityConstraintAt;
+*getObjectType = *XML::Xercesc::SchemaElementDecl_getObjectType;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -1981,16 +2038,20 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
+
 sub new {
     my $pkg = shift;
     my $self = XML::Xercesc::new_SchemaElementDeclEnumerator(@_);
     bless $self, $pkg if defined($self);
 }
 
-
 *hasMoreElements = *XML::Xercesc::SchemaElementDeclEnumerator_hasMoreElements;
 *nextElement = *XML::Xercesc::SchemaElementDeclEnumerator_nextElement;
 *Reset = *XML::Xercesc::SchemaElementDeclEnumerator_Reset;
+*size = *XML::Xercesc::SchemaElementDeclEnumerator_size;
+*resetKey = *XML::Xercesc::SchemaElementDeclEnumerator_resetKey;
+*nextElementKey = *XML::Xercesc::SchemaElementDeclEnumerator_nextElementKey;
+*hasMoreKeys = *XML::Xercesc::SchemaElementDeclEnumerator_hasMoreKeys;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -2030,6 +2091,7 @@ sub new {
 *setValidated = *XML::Xercesc::SchemaGrammar_setValidated;
 *reset = *XML::Xercesc::SchemaGrammar_reset;
 *getElemEnumerator = *XML::Xercesc::SchemaGrammar_getElemEnumerator;
+*getNotationEnumerator = *XML::Xercesc::SchemaGrammar_getNotationEnumerator;
 *getAttributeDeclRegistry = *XML::Xercesc::SchemaGrammar_getAttributeDeclRegistry;
 *getComplexTypeRegistry = *XML::Xercesc::SchemaGrammar_getComplexTypeRegistry;
 *getGroupInfoRegistry = *XML::Xercesc::SchemaGrammar_getGroupInfoRegistry;
@@ -2038,6 +2100,7 @@ sub new {
 *getNamespaceScope = *XML::Xercesc::SchemaGrammar_getNamespaceScope;
 *getValidSubstitutionGroups = *XML::Xercesc::SchemaGrammar_getValidSubstitutionGroups;
 *getIDRefList = *XML::Xercesc::SchemaGrammar_getIDRefList;
+*getValidationContext = *XML::Xercesc::SchemaGrammar_getValidationContext;
 *setTargetNamespace = *XML::Xercesc::SchemaGrammar_setTargetNamespace;
 *setAttributeDeclRegistry = *XML::Xercesc::SchemaGrammar_setAttributeDeclRegistry;
 *setComplexTypeRegistry = *XML::Xercesc::SchemaGrammar_setComplexTypeRegistry;
@@ -2045,7 +2108,12 @@ sub new {
 *setAttGroupInfoRegistry = *XML::Xercesc::SchemaGrammar_setAttGroupInfoRegistry;
 *setNamespaceScope = *XML::Xercesc::SchemaGrammar_setNamespaceScope;
 *setValidSubstitutionGroups = *XML::Xercesc::SchemaGrammar_setValidSubstitutionGroups;
+*setGrammarDescription = *XML::Xercesc::SchemaGrammar_setGrammarDescription;
+*getGrammarDescription = *XML::Xercesc::SchemaGrammar_getGrammarDescription;
 *putGroupElemDecl = *XML::Xercesc::SchemaGrammar_putGroupElemDecl;
+*putAnnotation = *XML::Xercesc::SchemaGrammar_putAnnotation;
+*addAnnotation = *XML::Xercesc::SchemaGrammar_addAnnotation;
+*getAnnotation = *XML::Xercesc::SchemaGrammar_getAnnotation;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -2092,7 +2160,13 @@ sub new {
 *setErrorReporter = *XML::Xercesc::SchemaValidator_setErrorReporter;
 *setExitOnFirstFatal = *XML::Xercesc::SchemaValidator_setExitOnFirstFatal;
 *setDatatypeBuffer = *XML::Xercesc::SchemaValidator_setDatatypeBuffer;
+*clearDatatypeBuffer = *XML::Xercesc::SchemaValidator_clearDatatypeBuffer;
 *getCurrentTypeInfo = *XML::Xercesc::SchemaValidator_getCurrentTypeInfo;
+*getCurrentDatatypeValidator = *XML::Xercesc::SchemaValidator_getCurrentDatatypeValidator;
+*getMostRecentAttrValidator = *XML::Xercesc::SchemaValidator_getMostRecentAttrValidator;
+*getErrorOccurred = *XML::Xercesc::SchemaValidator_getErrorOccurred;
+*getIsElemSpecified = *XML::Xercesc::SchemaValidator_getIsElemSpecified;
+*getNormalizedValue = *XML::Xercesc::SchemaValidator_getNormalizedValue;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -2113,12 +2187,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces XML::Xerces::XMLAttDefList );
 %OWNER = ();
 %ITERATORS = ();
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_SchemaAttDefList(@_);
-    bless $self, $pkg if defined($self);
-}
-
 
 *hasMoreElements = *XML::Xercesc::SchemaAttDefList_hasMoreElements;
 *isEmpty = *XML::Xercesc::SchemaAttDefList_isEmpty;
@@ -2126,6 +2194,14 @@ sub new {
 *findAttDef = *XML::Xercesc::SchemaAttDefList_findAttDef;
 *nextElement = *XML::Xercesc::SchemaAttDefList_nextElement;
 *Reset = *XML::Xercesc::SchemaAttDefList_Reset;
+*getAttDefCount = *XML::Xercesc::SchemaAttDefList_getAttDefCount;
+*getAttDef = *XML::Xercesc::SchemaAttDefList_getAttDef;
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaAttDefList(@_);
+    bless $self, $pkg if defined($self);
+}
+
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -2171,15 +2247,21 @@ sub new {
 *getAttName = *XML::Xercesc::SchemaAttDef_getAttName;
 *getDatatypeValidator = *XML::Xercesc::SchemaAttDef_getDatatypeValidator;
 *getNamespaceList = *XML::Xercesc::SchemaAttDef_getNamespaceList;
+*getBaseAttDecl = *XML::Xercesc::SchemaAttDef_getBaseAttDecl;
+*getPSVIScope = *XML::Xercesc::SchemaAttDef_getPSVIScope;
+*getEnclosingCT = *XML::Xercesc::SchemaAttDef_getEnclosingCT;
 *setElemId = *XML::Xercesc::SchemaAttDef_setElemId;
 *setAttName = *XML::Xercesc::SchemaAttDef_setAttName;
 *setDatatypeValidator = *XML::Xercesc::SchemaAttDef_setDatatypeValidator;
 *setAnyDatatypeValidator = *XML::Xercesc::SchemaAttDef_setAnyDatatypeValidator;
+*setBaseAttDecl = *XML::Xercesc::SchemaAttDef_setBaseAttDecl;
+*setPSVIScope = *XML::Xercesc::SchemaAttDef_setPSVIScope;
 *setMembertypeValidator = *XML::Xercesc::SchemaAttDef_setMembertypeValidator;
 *setNamespaceList = *XML::Xercesc::SchemaAttDef_setNamespaceList;
 *resetNamespaceList = *XML::Xercesc::SchemaAttDef_resetNamespaceList;
 *setValidity = *XML::Xercesc::SchemaAttDef_setValidity;
 *setValidationAttempted = *XML::Xercesc::SchemaAttDef_setValidationAttempted;
+*setEnclosingCT = *XML::Xercesc::SchemaAttDef_setEnclosingCT;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -2197,9 +2279,6 @@ sub ACQUIRE {
 
 package XML::Xerces::SAXException;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
@@ -2210,7 +2289,6 @@ sub new {
 }
 
 
-*operator_assignment = *XML::Xercesc::SAXException_operator_assignment;
 *getMessage = *XML::Xercesc::SAXException_getMessage;
 sub DISOWN {
     my $self = shift;
@@ -2283,9 +2361,6 @@ sub ACQUIRE {
 
 package XML::Xerces::SAXParseException;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces XML::Xerces::SAXException );
 %OWNER = ();
 %ITERATORS = ();
@@ -2296,7 +2371,6 @@ sub new {
 }
 
 
-*operator_assignment = *XML::Xercesc::SAXParseException_operator_assignment;
 *getColumnNumber = *XML::Xercesc::SAXParseException_getColumnNumber;
 *getLineNumber = *XML::Xercesc::SAXParseException_getLineNumber;
 *getPublicId = *XML::Xercesc::SAXParseException_getPublicId;
@@ -3013,6 +3087,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *fgFixedString = *XML::Xercesc::XMLUni_fgFixedString;
 *fgIBM037EncodingString = *XML::Xercesc::XMLUni_fgIBM037EncodingString;
 *fgIBM037EncodingString2 = *XML::Xercesc::XMLUni_fgIBM037EncodingString2;
+*fgIBM1047EncodingString = *XML::Xercesc::XMLUni_fgIBM1047EncodingString;
+*fgIBM1047EncodingString2 = *XML::Xercesc::XMLUni_fgIBM1047EncodingString2;
 *fgIBM1140EncodingString = *XML::Xercesc::XMLUni_fgIBM1140EncodingString;
 *fgIBM1140EncodingString2 = *XML::Xercesc::XMLUni_fgIBM1140EncodingString2;
 *fgIBM1140EncodingString3 = *XML::Xercesc::XMLUni_fgIBM1140EncodingString3;
@@ -3114,6 +3190,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *fgIGXMLScanner = *XML::Xercesc::XMLUni_fgIGXMLScanner;
 *fgSGXMLScanner = *XML::Xercesc::XMLUni_fgSGXMLScanner;
 *fgDGXMLScanner = *XML::Xercesc::XMLUni_fgDGXMLScanner;
+*fgCDataStart = *XML::Xercesc::XMLUni_fgCDataStart;
+*fgCDataEnd = *XML::Xercesc::XMLUni_fgCDataEnd;
 *fgArrayIndexOutOfBoundsException_Name = *XML::Xercesc::XMLUni_fgArrayIndexOutOfBoundsException_Name;
 *fgEmptyStackException_Name = *XML::Xercesc::XMLUni_fgEmptyStackException_Name;
 *fgIllegalArgumentException_Name = *XML::Xercesc::XMLUni_fgIllegalArgumentException_Name;
@@ -3135,6 +3213,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *fgInvalidDatatypeValueException_Name = *XML::Xercesc::XMLUni_fgInvalidDatatypeValueException_Name;
 *fgSchemaDateTimeException_Name = *XML::Xercesc::XMLUni_fgSchemaDateTimeException_Name;
 *fgXPathException_Name = *XML::Xercesc::XMLUni_fgXPathException_Name;
+*fgXSerializationException_Name = *XML::Xercesc::XMLUni_fgXSerializationException_Name;
 *fgNegINFString = *XML::Xercesc::XMLUni_fgNegINFString;
 *fgNegZeroString = *XML::Xercesc::XMLUni_fgNegZeroString;
 *fgPosZeroString = *XML::Xercesc::XMLUni_fgPosZeroString;
@@ -3156,6 +3235,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *fgXercesCacheGrammarFromParse = *XML::Xercesc::XMLUni_fgXercesCacheGrammarFromParse;
 *fgXercesUseCachedGrammarInParse = *XML::Xercesc::XMLUni_fgXercesUseCachedGrammarInParse;
 *fgXercesScannerName = *XML::Xercesc::XMLUni_fgXercesScannerName;
+*fgXercesParserUseDocumentFromImplementation = *XML::Xercesc::XMLUni_fgXercesParserUseDocumentFromImplementation;
 *fgXercesCalculateSrcOfs = *XML::Xercesc::XMLUni_fgXercesCalculateSrcOfs;
 *fgXercesStandardUriConformant = *XML::Xercesc::XMLUni_fgXercesStandardUriConformant;
 *fgSAX2CoreValidation = *XML::Xercesc::XMLUni_fgSAX2CoreValidation;
@@ -3183,116 +3263,9 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *fgDOMWRTValidation = *XML::Xercesc::XMLUni_fgDOMWRTValidation;
 *fgDOMWRTWhitespaceInElementContent = *XML::Xercesc::XMLUni_fgDOMWRTWhitespaceInElementContent;
 *fgDOMWRTBOM = *XML::Xercesc::XMLUni_fgDOMWRTBOM;
+*fgDOMXMLDeclaration = *XML::Xercesc::XMLUni_fgDOMXMLDeclaration;
 *fgXercescDefaultLocale = *XML::Xercesc::XMLUni_fgXercescDefaultLocale;
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_XMLUni(@_);
-    bless $self, $pkg if defined($self);
-}
 
-
-sub DISOWN {
-    my $self = shift;
-    my $ptr = tied(%$self);
-    delete $OWNER{$ptr};
-}
-
-sub ACQUIRE {
-    my $self = shift;
-    my $ptr = tied(%$self);
-    $OWNER{$ptr} = 1;
-}
-
-
-############# Class : XML::Xerces::XMLScanner ##############
-
-package XML::Xerces::XMLScanner;
-use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces );
-%OWNER = ();
-%ITERATORS = ();
-*Decl_Text = *XML::Xercesc::XMLScanner_Decl_Text;
-*Decl_XML = *XML::Xercesc::XMLScanner_Decl_XML;
-*EntityExp_Pushed = *XML::Xercesc::XMLScanner_EntityExp_Pushed;
-*EntityExp_Returned = *XML::Xercesc::XMLScanner_EntityExp_Returned;
-*EntityExp_Failed = *XML::Xercesc::XMLScanner_EntityExp_Failed;
-*Token_CData = *XML::Xercesc::XMLScanner_Token_CData;
-*Token_CharData = *XML::Xercesc::XMLScanner_Token_CharData;
-*Token_Comment = *XML::Xercesc::XMLScanner_Token_Comment;
-*Token_EndTag = *XML::Xercesc::XMLScanner_Token_EndTag;
-*Token_EOF = *XML::Xercesc::XMLScanner_Token_EOF;
-*Token_PI = *XML::Xercesc::XMLScanner_Token_PI;
-*Token_StartTag = *XML::Xercesc::XMLScanner_Token_StartTag;
-*Token_Unknown = *XML::Xercesc::XMLScanner_Token_Unknown;
-*Val_Never = *XML::Xercesc::XMLScanner_Val_Never;
-*Val_Always = *XML::Xercesc::XMLScanner_Val_Always;
-*Val_Auto = *XML::Xercesc::XMLScanner_Val_Auto;
-
-*getName = *XML::Xercesc::XMLScanner_getName;
-*resolveQName = *XML::Xercesc::XMLScanner_resolveQName;
-*scanNext = *XML::Xercesc::XMLScanner_scanNext;
-*getReaderMgr = *XML::Xercesc::XMLScanner_getReaderMgr;
-*getSrcOffset = *XML::Xercesc::XMLScanner_getSrcOffset;
-*getSecurityManager = *XML::Xercesc::XMLScanner_getSecurityManager;
-*getLoadExternalDTD = *XML::Xercesc::XMLScanner_getLoadExternalDTD;
-*getNormalizeData = *XML::Xercesc::XMLScanner_getNormalizeData;
-*isCachingGrammarFromParse = *XML::Xercesc::XMLScanner_isCachingGrammarFromParse;
-*isUsingCachedGrammarInParse = *XML::Xercesc::XMLScanner_isUsingCachedGrammarInParse;
-*getCalculateSrcOfs = *XML::Xercesc::XMLScanner_getCalculateSrcOfs;
-*getRootGrammar = *XML::Xercesc::XMLScanner_getRootGrammar;
-*getXMLVersion = *XML::Xercesc::XMLScanner_getXMLVersion;
-*getMemoryManager = *XML::Xercesc::XMLScanner_getMemoryManager;
-*getEmptyNamespaceId = *XML::Xercesc::XMLScanner_getEmptyNamespaceId;
-*getUnknownNamespaceId = *XML::Xercesc::XMLScanner_getUnknownNamespaceId;
-*getXMLNamespaceId = *XML::Xercesc::XMLScanner_getXMLNamespaceId;
-*getXMLNSNamespaceId = *XML::Xercesc::XMLScanner_getXMLNSNamespaceId;
-*isValidatorFromUser = *XML::Xercesc::XMLScanner_isValidatorFromUser;
-*getStandardUriConformant = *XML::Xercesc::XMLScanner_getStandardUriConformant;
-*setDocHandler = *XML::Xercesc::XMLScanner_setDocHandler;
-*setDocTypeHandler = *XML::Xercesc::XMLScanner_setDocTypeHandler;
-*setDoNamespaces = *XML::Xercesc::XMLScanner_setDoNamespaces;
-*setEntityHandler = *XML::Xercesc::XMLScanner_setEntityHandler;
-*setErrorReporter = *XML::Xercesc::XMLScanner_setErrorReporter;
-sub setErrorHandler {
-  my ($self,$handler) = @_;
-  my $retval;
-  my $callback = $XML::Xerces::XMLScanner::OWNER{$self}->{__ERROR_HANDLER};
-#  if (defined $callback) {
-  if (0) {
-    $retval = $callback->set_callback_obj($handler);
-  } else {
-    $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
-    $XML::Xerces::XMLScanner::OWNER{$self}->{__ERROR_HANDLER} = $callback;
-  }
-  XML::Xercesc::XMLScanner_setErrorHandler($self,$callback);
-  return $retval;
-}
-*setGrammarResolver = *XML::Xercesc::XMLScanner_setGrammarResolver;
-*setURIStringPool = *XML::Xercesc::XMLScanner_setURIStringPool;
-*setExitOnFirstFatal = *XML::Xercesc::XMLScanner_setExitOnFirstFatal;
-*setValidationConstraintFatal = *XML::Xercesc::XMLScanner_setValidationConstraintFatal;
-*setValidationScheme = *XML::Xercesc::XMLScanner_setValidationScheme;
-*setValidator = *XML::Xercesc::XMLScanner_setValidator;
-*setDoSchema = *XML::Xercesc::XMLScanner_setDoSchema;
-*setValidationSchemaFullChecking = *XML::Xercesc::XMLScanner_setValidationSchemaFullChecking;
-*setHasNoDTD = *XML::Xercesc::XMLScanner_setHasNoDTD;
-*cacheGrammarFromParse = *XML::Xercesc::XMLScanner_cacheGrammarFromParse;
-*useCachedGrammarInParse = *XML::Xercesc::XMLScanner_useCachedGrammarInParse;
-*setRootElemName = *XML::Xercesc::XMLScanner_setRootElemName;
-*setSecurityManager = *XML::Xercesc::XMLScanner_setSecurityManager;
-*setLoadExternalDTD = *XML::Xercesc::XMLScanner_setLoadExternalDTD;
-*setNormalizeData = *XML::Xercesc::XMLScanner_setNormalizeData;
-*setCalculateSrcOfs = *XML::Xercesc::XMLScanner_setCalculateSrcOfs;
-*setParseSettings = *XML::Xercesc::XMLScanner_setParseSettings;
-*setStandardUriConformant = *XML::Xercesc::XMLScanner_setStandardUriConformant;
-*incrementErrorCount = *XML::Xercesc::XMLScanner_incrementErrorCount;
-*getDoValidation = *XML::Xercesc::XMLScanner_getDoValidation;
-*setDoValidation = *XML::Xercesc::XMLScanner_setDoValidation;
-*scanReset = *XML::Xercesc::XMLScanner_scanReset;
-*checkXMLDecl = *XML::Xercesc::XMLScanner_checkXMLDecl;
-*loadGrammar = *XML::Xercesc::XMLScanner_loadGrammar;
-*reinitScannerMutex = *XML::Xercesc::XMLScanner_reinitScannerMutex;
-*reinitMsgLoader = *XML::Xercesc::XMLScanner_reinitMsgLoader;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -3310,9 +3283,6 @@ sub ACQUIRE {
 
 package XML::Xerces::XMLPScanToken;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-use overload
-    "=" => sub { $_[0]->operator_assignment($_[1])},
-    "fallback" => 1;
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
@@ -3323,7 +3293,6 @@ sub new {
 }
 
 
-*operator_assignment = *XML::Xercesc::XMLPScanToken_operator_assignment;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -3395,6 +3364,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
+*elementTypeInfo = *XML::Xercesc::XMLDocumentHandler_elementTypeInfo;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -3632,7 +3602,9 @@ sub DESTROY {
 
 *getDocumentHandler = *XML::Xercesc::SAXParser_getDocumentHandler;
 *getEntityResolver = *XML::Xercesc::SAXParser_getEntityResolver;
+*getXMLEntityResolver = *XML::Xercesc::SAXParser_getXMLEntityResolver;
 *getErrorHandler = *XML::Xercesc::SAXParser_getErrorHandler;
+*getPSVIHandler = *XML::Xercesc::SAXParser_getPSVIHandler;
 *getValidator = *XML::Xercesc::SAXParser_getValidator;
 *getValidationScheme = *XML::Xercesc::SAXParser_getValidationScheme;
 *getDoSchema = *XML::Xercesc::SAXParser_getDoSchema;
@@ -3703,6 +3675,7 @@ sub setErrorHandler {
   XML::Xercesc::SAXParser_setErrorHandler($self,$callback);
   return $retval;
 }
+*setPSVIHandler = *XML::Xercesc::SAXParser_setPSVIHandler;
 sub setEntityResolver {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAXParser::OWNER{$self}->{__ENTITY_RESOLVER};
@@ -3715,6 +3688,7 @@ sub setEntityResolver {
   }
   return XML::Xercesc::SAXParser_setEntityResolver($self,$callback);
 }
+*setXMLEntityResolver = *XML::Xercesc::SAXParser_setXMLEntityResolver;
 *error = *XML::Xercesc::SAXParser_error;
 *resetErrors = *XML::Xercesc::SAXParser_resetErrors;
 sub DISOWN {
@@ -4900,6 +4874,114 @@ sub ACQUIRE {
 }
 
 
+############# Class : XML::Xerces::DOMInputSource ##############
+
+package XML::Xerces::DOMInputSource;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+
+*getEncoding = *XML::Xercesc::DOMInputSource_getEncoding;
+*getPublicId = *XML::Xercesc::DOMInputSource_getPublicId;
+*getSystemId = *XML::Xercesc::DOMInputSource_getSystemId;
+*getBaseURI = *XML::Xercesc::DOMInputSource_getBaseURI;
+*setEncoding = *XML::Xercesc::DOMInputSource_setEncoding;
+*setPublicId = *XML::Xercesc::DOMInputSource_setPublicId;
+*setSystemId = *XML::Xercesc::DOMInputSource_setSystemId;
+*setBaseURI = *XML::Xercesc::DOMInputSource_setBaseURI;
+*makeStream = *XML::Xercesc::DOMInputSource_makeStream;
+*setIssueFatalErrorIfNotFound = *XML::Xercesc::DOMInputSource_setIssueFatalErrorIfNotFound;
+*getIssueFatalErrorIfNotFound = *XML::Xercesc::DOMInputSource_getIssueFatalErrorIfNotFound;
+*release = *XML::Xercesc::DOMInputSource_release;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::Wrapper4InputSource ##############
+
+package XML::Xerces::Wrapper4InputSource;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::DOMInputSource );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_Wrapper4InputSource(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*makeStream = *XML::Xercesc::Wrapper4InputSource_makeStream;
+*getEncoding = *XML::Xercesc::Wrapper4InputSource_getEncoding;
+*getPublicId = *XML::Xercesc::Wrapper4InputSource_getPublicId;
+*getSystemId = *XML::Xercesc::Wrapper4InputSource_getSystemId;
+*getBaseURI = *XML::Xercesc::Wrapper4InputSource_getBaseURI;
+*getIssueFatalErrorIfNotFound = *XML::Xercesc::Wrapper4InputSource_getIssueFatalErrorIfNotFound;
+*setEncoding = *XML::Xercesc::Wrapper4InputSource_setEncoding;
+*setPublicId = *XML::Xercesc::Wrapper4InputSource_setPublicId;
+*setSystemId = *XML::Xercesc::Wrapper4InputSource_setSystemId;
+*setBaseURI = *XML::Xercesc::Wrapper4InputSource_setBaseURI;
+*setIssueFatalErrorIfNotFound = *XML::Xercesc::Wrapper4InputSource_setIssueFatalErrorIfNotFound;
+*release = *XML::Xercesc::Wrapper4InputSource_release;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::Wrapper4DOMInputSource ##############
+
+package XML::Xerces::Wrapper4DOMInputSource;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::InputSource );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_Wrapper4DOMInputSource(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*makeStream = *XML::Xercesc::Wrapper4DOMInputSource_makeStream;
+*getEncoding = *XML::Xercesc::Wrapper4DOMInputSource_getEncoding;
+*getPublicId = *XML::Xercesc::Wrapper4DOMInputSource_getPublicId;
+*getSystemId = *XML::Xercesc::Wrapper4DOMInputSource_getSystemId;
+*getIssueFatalErrorIfNotFound = *XML::Xercesc::Wrapper4DOMInputSource_getIssueFatalErrorIfNotFound;
+*setEncoding = *XML::Xercesc::Wrapper4DOMInputSource_setEncoding;
+*setPublicId = *XML::Xercesc::Wrapper4DOMInputSource_setPublicId;
+*setSystemId = *XML::Xercesc::Wrapper4DOMInputSource_setSystemId;
+*setIssueFatalErrorIfNotFound = *XML::Xercesc::Wrapper4DOMInputSource_setIssueFatalErrorIfNotFound;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
 ############# Class : XML::Xerces::DOMBuilder ##############
 
 package XML::Xerces::DOMBuilder;
@@ -4980,12 +5062,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 *getDOMImplementation = *XML::Xercesc::DOMImplementationRegistry_getDOMImplementation;
 *addSource = *XML::Xercesc::DOMImplementationRegistry_addSource;
-sub new {
-    my $pkg = shift;
-    my $self = XML::Xercesc::new_DOMImplementationRegistry(@_);
-    bless $self, $pkg if defined($self);
-}
-
 
 sub DISOWN {
     my $self = shift;
@@ -5009,39 +5085,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 
 *getDOMImplementation = *XML::Xercesc::DOMImplementationSource_getDOMImplementation;
-sub DISOWN {
-    my $self = shift;
-    my $ptr = tied(%$self);
-    delete $OWNER{$ptr};
-}
-
-sub ACQUIRE {
-    my $self = shift;
-    my $ptr = tied(%$self);
-    $OWNER{$ptr} = 1;
-}
-
-
-############# Class : XML::Xerces::DOMInputSource ##############
-
-package XML::Xerces::DOMInputSource;
-use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces );
-%OWNER = ();
-%ITERATORS = ();
-
-*getEncoding = *XML::Xercesc::DOMInputSource_getEncoding;
-*getPublicId = *XML::Xercesc::DOMInputSource_getPublicId;
-*getSystemId = *XML::Xercesc::DOMInputSource_getSystemId;
-*getBaseURI = *XML::Xercesc::DOMInputSource_getBaseURI;
-*setEncoding = *XML::Xercesc::DOMInputSource_setEncoding;
-*setPublicId = *XML::Xercesc::DOMInputSource_setPublicId;
-*setSystemId = *XML::Xercesc::DOMInputSource_setSystemId;
-*setBaseURI = *XML::Xercesc::DOMInputSource_setBaseURI;
-*makeStream = *XML::Xercesc::DOMInputSource_makeStream;
-*setIssueFatalErrorIfNotFound = *XML::Xercesc::DOMInputSource_setIssueFatalErrorIfNotFound;
-*getIssueFatalErrorIfNotFound = *XML::Xercesc::DOMInputSource_getIssueFatalErrorIfNotFound;
-*release = *XML::Xercesc::DOMInputSource_release;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
@@ -5208,6 +5251,7 @@ sub getDocument {
 *getCreateCommentNodes = *XML::Xercesc::AbstractDOMParser_getCreateCommentNodes;
 *getCalculateSrcOfs = *XML::Xercesc::AbstractDOMParser_getCalculateSrcOfs;
 *getStandardUriConformant = *XML::Xercesc::AbstractDOMParser_getStandardUriConformant;
+*getPSVIHandler = *XML::Xercesc::AbstractDOMParser_getPSVIHandler;
 *setDoNamespaces = *XML::Xercesc::AbstractDOMParser_setDoNamespaces;
 *setExitOnFirstFatalError = *XML::Xercesc::AbstractDOMParser_setExitOnFirstFatalError;
 *setValidationConstraintFatal = *XML::Xercesc::AbstractDOMParser_setValidationConstraintFatal;
@@ -5224,10 +5268,13 @@ sub getDocument {
 *setCalculateSrcOfs = *XML::Xercesc::AbstractDOMParser_setCalculateSrcOfs;
 *setStandardUriConformant = *XML::Xercesc::AbstractDOMParser_setStandardUriConformant;
 *useScanner = *XML::Xercesc::AbstractDOMParser_useScanner;
+*useImplementation = *XML::Xercesc::AbstractDOMParser_useImplementation;
+*setPSVIHandler = *XML::Xercesc::AbstractDOMParser_setPSVIHandler;
 *parse = *XML::Xercesc::AbstractDOMParser_parse;
 *parseFirst = *XML::Xercesc::AbstractDOMParser_parseFirst;
 *parseNext = *XML::Xercesc::AbstractDOMParser_parseNext;
 *parseReset = *XML::Xercesc::AbstractDOMParser_parseReset;
+*elementTypeInfo = *XML::Xercesc::AbstractDOMParser_elementTypeInfo;
 *getExpandEntityReferences = *XML::Xercesc::AbstractDOMParser_getExpandEntityReferences;
 *setExpandEntityReferences = *XML::Xercesc::AbstractDOMParser_setExpandEntityReferences;
 sub DISOWN {
@@ -5270,6 +5317,7 @@ sub DESTROY {
 
 *getErrorHandler = *XML::Xercesc::XercesDOMParser_getErrorHandler;
 *getEntityResolver = *XML::Xercesc::XercesDOMParser_getEntityResolver;
+*getXMLEntityResolver = *XML::Xercesc::XercesDOMParser_getXMLEntityResolver;
 *isCachingGrammarFromParse = *XML::Xercesc::XercesDOMParser_isCachingGrammarFromParse;
 *isUsingCachedGrammarInParse = *XML::Xercesc::XercesDOMParser_isUsingCachedGrammarInParse;
 *getGrammar = *XML::Xercesc::XercesDOMParser_getGrammar;
@@ -5302,6 +5350,7 @@ sub setEntityResolver {
   }
   return XML::Xercesc::XercesDOMParser_setEntityResolver($self,$callback);
 }
+*setXMLEntityResolver = *XML::Xercesc::XercesDOMParser_setXMLEntityResolver;
 *cacheGrammarFromParse = *XML::Xercesc::XercesDOMParser_cacheGrammarFromParse;
 *useCachedGrammarInParse = *XML::Xercesc::XercesDOMParser_useCachedGrammarInParse;
 *resetDocumentPool = *XML::Xercesc::XercesDOMParser_resetDocumentPool;
@@ -5507,6 +5556,8 @@ package XML::Xerces;
 
 *DEBUG_UTF8_OUT = *XML::Xercesc::DEBUG_UTF8_OUT;
 *DEBUG_UTF8_IN = *XML::Xercesc::DEBUG_UTF8_IN;
+*XMLPlatformUtils_fgArrayMemoryManager = *XML::Xercesc::XMLPlatformUtils_fgArrayMemoryManager;
+*XMLPlatformUtils_fgAtomicMutex = *XML::Xercesc::XMLPlatformUtils_fgAtomicMutex;
 *XMLElementDecl_fgInvalidElemId = *XML::Xercesc::XMLElementDecl_fgInvalidElemId;
 *XMLElementDecl_fgPCDataElemId = *XML::Xercesc::XMLElementDecl_fgPCDataElemId;
 *XMLElementDecl_fgPCDataElemName = *XML::Xercesc::XMLElementDecl_fgPCDataElemName;
@@ -5529,6 +5580,8 @@ package XML::Xerces;
 *XMLUni_fgFixedString = *XML::Xercesc::XMLUni_fgFixedString;
 *XMLUni_fgIBM037EncodingString = *XML::Xercesc::XMLUni_fgIBM037EncodingString;
 *XMLUni_fgIBM037EncodingString2 = *XML::Xercesc::XMLUni_fgIBM037EncodingString2;
+*XMLUni_fgIBM1047EncodingString = *XML::Xercesc::XMLUni_fgIBM1047EncodingString;
+*XMLUni_fgIBM1047EncodingString2 = *XML::Xercesc::XMLUni_fgIBM1047EncodingString2;
 *XMLUni_fgIBM1140EncodingString = *XML::Xercesc::XMLUni_fgIBM1140EncodingString;
 *XMLUni_fgIBM1140EncodingString2 = *XML::Xercesc::XMLUni_fgIBM1140EncodingString2;
 *XMLUni_fgIBM1140EncodingString3 = *XML::Xercesc::XMLUni_fgIBM1140EncodingString3;
@@ -5630,6 +5683,8 @@ package XML::Xerces;
 *XMLUni_fgIGXMLScanner = *XML::Xercesc::XMLUni_fgIGXMLScanner;
 *XMLUni_fgSGXMLScanner = *XML::Xercesc::XMLUni_fgSGXMLScanner;
 *XMLUni_fgDGXMLScanner = *XML::Xercesc::XMLUni_fgDGXMLScanner;
+*XMLUni_fgCDataStart = *XML::Xercesc::XMLUni_fgCDataStart;
+*XMLUni_fgCDataEnd = *XML::Xercesc::XMLUni_fgCDataEnd;
 *XMLUni_fgArrayIndexOutOfBoundsException_Name = *XML::Xercesc::XMLUni_fgArrayIndexOutOfBoundsException_Name;
 *XMLUni_fgEmptyStackException_Name = *XML::Xercesc::XMLUni_fgEmptyStackException_Name;
 *XMLUni_fgIllegalArgumentException_Name = *XML::Xercesc::XMLUni_fgIllegalArgumentException_Name;
@@ -5651,6 +5706,7 @@ package XML::Xerces;
 *XMLUni_fgInvalidDatatypeValueException_Name = *XML::Xercesc::XMLUni_fgInvalidDatatypeValueException_Name;
 *XMLUni_fgSchemaDateTimeException_Name = *XML::Xercesc::XMLUni_fgSchemaDateTimeException_Name;
 *XMLUni_fgXPathException_Name = *XML::Xercesc::XMLUni_fgXPathException_Name;
+*XMLUni_fgXSerializationException_Name = *XML::Xercesc::XMLUni_fgXSerializationException_Name;
 *XMLUni_fgNegINFString = *XML::Xercesc::XMLUni_fgNegINFString;
 *XMLUni_fgNegZeroString = *XML::Xercesc::XMLUni_fgNegZeroString;
 *XMLUni_fgPosZeroString = *XML::Xercesc::XMLUni_fgPosZeroString;
@@ -5672,6 +5728,7 @@ package XML::Xerces;
 *XMLUni_fgXercesCacheGrammarFromParse = *XML::Xercesc::XMLUni_fgXercesCacheGrammarFromParse;
 *XMLUni_fgXercesUseCachedGrammarInParse = *XML::Xercesc::XMLUni_fgXercesUseCachedGrammarInParse;
 *XMLUni_fgXercesScannerName = *XML::Xercesc::XMLUni_fgXercesScannerName;
+*XMLUni_fgXercesParserUseDocumentFromImplementation = *XML::Xercesc::XMLUni_fgXercesParserUseDocumentFromImplementation;
 *XMLUni_fgXercesCalculateSrcOfs = *XML::Xercesc::XMLUni_fgXercesCalculateSrcOfs;
 *XMLUni_fgXercesStandardUriConformant = *XML::Xercesc::XMLUni_fgXercesStandardUriConformant;
 *XMLUni_fgSAX2CoreValidation = *XML::Xercesc::XMLUni_fgSAX2CoreValidation;
@@ -5699,6 +5756,7 @@ package XML::Xerces;
 *XMLUni_fgDOMWRTValidation = *XML::Xercesc::XMLUni_fgDOMWRTValidation;
 *XMLUni_fgDOMWRTWhitespaceInElementContent = *XML::Xercesc::XMLUni_fgDOMWRTWhitespaceInElementContent;
 *XMLUni_fgDOMWRTBOM = *XML::Xercesc::XMLUni_fgDOMWRTBOM;
+*XMLUni_fgDOMXMLDeclaration = *XML::Xercesc::XMLUni_fgDOMXMLDeclaration;
 *XMLUni_fgXercescDefaultLocale = *XML::Xercesc::XMLUni_fgXercescDefaultLocale;
 *PERLCALLBACKHANDLER_BASE_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_BASE_TYPE;
 *PERLCALLBACKHANDLER_ERROR_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_ERROR_TYPE;

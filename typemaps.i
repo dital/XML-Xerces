@@ -173,11 +173,13 @@ SV*
   $1 = SvOK($input) ? 1 : 0;
 }
 
-%typemap(typecheck, precedence=70)
+// %typemap(typecheck, precedence=70)
+%typecheck(SWIG_TYPECHECK_UNISTRING)
 XMLCh*, const XMLCh* 
 {
   $1 = SvPOK($input)||SvIOK($input)||SvNOK($input) ? 1 : 0;
 }
+
 
 //
 // Grammar*

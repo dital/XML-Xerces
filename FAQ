@@ -56,3 +56,22 @@ C.1 Why do a bunch of tests fail in t/DOMDocument.t?
     export LC_CTYPE=en_US
 
   - Otherwise, are you using Perl-5.6.0 or greater?
+
+D. Serializing a DOM tree
+=========================
+D.1 Why does DOMWriter::writeToString() always output UTF-16 as the encoding?
+
+  Short answer: don't use writeToString(). 
+
+  Use a MemBufFormatTarget instead:
+
+  my $dom = XML::Xerces::XercesDOMParser->new();
+  eval{$dom->parse(XML::Xerces::MemBufInputSource->new($document))};
+  XML::Xerces::error($@) if $@;
+  my $doc = $dom->getDocument();
+
+  my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
+  my $writer = $impl->createDOMWriter();
+  my $target = XML::Xerces::MemBufFormatTarget->new();
+  $writer->writeNode($target,$doc);
+

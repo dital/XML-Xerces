@@ -9,7 +9,7 @@ END {fail() unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces qw(error);
-use Test::More tests => 12;
+use Test::More tests => 15;
 use Config;
 
 use lib 't';
@@ -58,16 +58,6 @@ if ($DOM->canSetFeature("$XML::Xerces::XMLUni::fgDOMValidateIfSchema", 0)) {
   fail('validate_if_schema=>1');
 }
 
-SKIP: {
-  skip "DOMInputSource not implemented", 2;
-  my $is = eval{$impl->createDOMInputSource()};
-  ok(defined $is)
-    or diag
-      $is->setSystemId($PERSONAL_FILE_NAME);
-  eval{$DOM->parse($is)};
-  ok((not $@),'parse input source');
-}
-
 my $doc = eval{$DOM->parseURI($PERSONAL_FILE_NAME)};
 ok((not $@),'parseURI');
 isa_ok($doc,'XML::Xerces::DOMDocument');
@@ -75,9 +65,27 @@ isa_ok($doc,'XML::Xerces::DOMDocument');
 my @persons = $doc->getElementsByTagName('person');
 is(scalar @persons, 6,'getting <person>s');
 
-# test the overloaded parse version
+# test parseURI
 $doc = eval{$DOM->parseURI("file:$PERSONAL_FILE_NAME")};
 ok((not $@),'parseURI with file:');
+isa_ok($doc,'XML::Xerces::DOMDocument');
+
+@persons = $doc->getElementsByTagName('person');
+is(scalar @persons, 6,'getting <person>s');
+
+# test parse with an input source
+my $dom_is;
+eval{
+  my $sax_is = XML::Xerces::LocalFileInputSource->new($PERSONAL_FILE_NAME);
+  $dom_is = XML::Xerces::Wrapper4InputSource->new($sax_is);
+};
+ok((not $@),'Creating InputSource wrapper')
+  or diag(XML::Xerces::error($@));
+isa_ok($dom_is,'XML::Xerces::Wrapper4InputSource');
+
+$doc = eval{$DOM->parse($dom_is)}
+  or diag(XML::Xerces::error($@));
+ok((not $@),'parse with InputSource');
 isa_ok($doc,'XML::Xerces::DOMDocument');
 
 @persons = $doc->getElementsByTagName('person');

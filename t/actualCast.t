@@ -9,7 +9,7 @@ END {fail() unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 11;
+use Test::More tests => 9;
 
 use lib 't';
 use TestUtils qw($DOM $PERSONAL $PERSONAL_FILE_NAME $PERSONAL_SCHEMA_FILE_NAME);

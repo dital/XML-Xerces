@@ -21,7 +21,7 @@ package XML::Xerces;
 use Carp;
 use vars qw(@EXPORT_OK $VERSION);
 @EXPORT_OK = qw(error);
-$VERSION = q[2.3.0-4];
+$VERSION = 250.0;
 
 sub error {
   my $error = shift;
@@ -438,16 +438,12 @@ sub get_text {
 }
 
 package XML::Xerces::XMLCatalogResolver;
-use XML::Xerces qw(error);
 use strict;
 use Carp;
 use vars qw($VERSION
 	    @ISA
 	    @EXPORT
 	    @EXPORT_OK
-	    $CATALOG
-	    %MAPS
-	    %REMAPS
 	   );
 require Exporter;
 
@@ -458,16 +454,17 @@ sub new {
   my $pkg = shift;
   my $catalog = shift;
   my $self = bless {}, $pkg;
-  $self->initialize($catalog);
+  $self->catalog($catalog);
+  $self->initialize()
+    if defined $catalog;
   return $self;
 }
 
 sub initialize {
   my $self = shift;
-
-  # allow callers to set the global variable
-  $CATALOG = shift
-    unless $CATALOG;
+  my $CATALOG = $self->catalog();
+  XML::Xerces::error (__PACKAGE__ . ": Must set catalog before calling initialize")
+      unless defined $CATALOG;
 
   my $DOM = XML::Xerces::XercesDOMParser->new();
   my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
@@ -475,17 +472,43 @@ sub initialize {
 
   # we parse the example XML Catalog
   eval{$DOM->parse($CATALOG)};
-  error ($@, __PACKAGE__ . ": Couldn't parse catalog: $CATALOG")
+  XML::Xerces::error ($@, __PACKAGE__ . ": Couldn't parse catalog: $CATALOG")
       if $@;
 
-  # now retrieve the mappings
+  # now retrieve the mappings and store them
   my $doc = $DOM->getDocument();
-  my @Maps = $doc->getElementsByTagName('Map');
-  %MAPS = map {($_->getAttribute('PublicId'),
-		   $_->getAttribute('HRef'))} @Maps;
-  my @Remaps = $doc->getElementsByTagName('Remap');
-  %REMAPS = map {($_->getAttribute('SystemId'),
-		     $_->getAttribute('HRef'))} @Remaps;
+  my @maps = $doc->getElementsByTagName('Map');
+  my %maps = map {($_->getAttribute('PublicId'),
+		   $_->getAttribute('HRef'))} @maps;
+  $self->maps(\%maps);
+  my @remaps = $doc->getElementsByTagName('Remap');
+  my %remaps = map {($_->getAttribute('SystemId'),
+		     $_->getAttribute('HRef'))} @remaps;
+  $self->remaps(\%remaps);
+}
+
+sub catalog {
+  my $self = shift;
+  if (@_) {
+    $self->{__CATALOG} = shift;
+  }
+  return $self->{__CATALOG};
+}
+
+sub maps {
+  my $self = shift;
+  if (@_) {
+    $self->{__MAPS} = shift;
+  }
+  return $self->{__MAPS};
+}
+
+sub remaps {
+  my $self = shift;
+  if (@_) {
+    $self->{__REMAPS} = shift;
+  }
+  return $self->{__REMAPS};
 }
 
 sub resolve_entity {
@@ -493,14 +516,20 @@ sub resolve_entity {
 #   print STDERR "Got PUBLIC: $pub\n";
 #   print STDERR "Got SYSTEM: $sys\n";
 
+  XML::Xerces::error (__PACKAGE__ . ": Must call initialize before using the resolver")
+      unless defined $self->maps or defined $self->remaps;
+
   # now check which one we were asked for
   my $href;
   if ($pub) {
-    $href = $MAPS{$pub};
-  } elsif ($sys) {
-    $href = $REMAPS{$sys};
-  } else {
-    croak("Neither PublicId or SystemId were defined");
+    $href = $self->maps->{$pub};
+  }
+  if ((not defined $href) and $sys) {
+    $href = $self->remaps->{$sys};
+  }
+  if (not defined $href) {
+    croak("could not resolve PUBLIC id:[$pub] or SYSTEM id: [$sys] using catalog: ["
+	  . $self->catalog . "]");
   }
 
   my $is = eval {XML::Xerces::LocalFileInputSource->new($href)};

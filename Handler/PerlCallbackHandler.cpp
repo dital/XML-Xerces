@@ -15,8 +15,7 @@ PerlCallbackHandler::~PerlCallbackHandler() {
 }
 
 PerlCallbackHandler::PerlCallbackHandler(SV* object) {
-    SvREFCNT_inc(object);
-    callbackObj = object;
+  set_callback_obj(object);
 }
 
 PerlCallbackHandler::PerlCallbackHandler(PerlCallbackHandler* handler) {

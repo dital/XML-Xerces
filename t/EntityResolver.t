@@ -9,7 +9,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 9;
+use Test::More tests => 10;
 use Cwd;
 
 use lib 't';
@@ -23,7 +23,7 @@ use vars qw($loaded $file $test);
 use strict;
 
 $loaded = 1;
-ok($loaded, "module loaded");
+pass("module loaded");
 
 ######################### End of black magic.
 
@@ -33,9 +33,14 @@ my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
 $DOM->setErrorHandler($ERROR_HANDLER);
 
 # see if we can create and set an entity resolver
+my $res = eval{XML::Xerces::XMLCatalogResolver->new('samples/catalog.xml')};
+XML::Xerces::error($@) if $@;
+$DOM->setEntityResolver($res);
+pass("set XMLCatalogResolver");
+
 my $ENTITY_RESOLVER = TestUtils->new();
 $DOM->setEntityResolver($ENTITY_RESOLVER);
-ok(1);
+pass("test resolver");
 
 # now lets see if the resolver gets invoked
 eval {

@@ -44,6 +44,8 @@
 #include "xercesc/framework/MemBufFormatTarget.hpp"
 #include "xercesc/framework/LocalFileFormatTarget.hpp"
 #include "xercesc/framework/StdOutFormatTarget.hpp"
+#include "xercesc/framework/Wrapper4InputSource.hpp"
+#include "xercesc/framework/Wrapper4DOMInputSource.hpp"
 
 #include "PerlCallbackHandler.hpp"
 #include "PerlErrorCallbackHandler.hpp"
@@ -177,6 +179,9 @@ bool DEBUG_UTF8_IN;
 #endif
 
 %import "xercesc/util/XercesDefs.hpp"
+// %import "xercesc/internal/XSerializable.hpp"
+
+#define DECL_XSERIALIZABLE(XMLUri)
 
 /*
  * The generic exception handler
@@ -201,7 +206,10 @@ bool DEBUG_UTF8_IN;
 /* 
  * NEEDED FOR INITIALIZATION AND TERMINATION 
  */
-%rename(operator_assignment) operator=;
+
+%ignore operator =;
+
+// %rename(operator_assignment) operator=;
 %rename(operator_equal_to) operator==;
 %rename(operator_not_equal_to) operator!=;
 
@@ -414,11 +422,13 @@ bool DEBUG_UTF8_IN;
 // these are needed for the DTD templates
 %import "xercesc/util/NameIdPool.hpp"
 
+%ignore XERCES_CPP_NAMESPACE::DTDElementDeclEnumerator::operator=;
 %include "xercesc/validators/DTD/DTDElementDecl.hpp"
 %template()  XERCES_CPP_NAMESPACE::XMLEnumerator<DTDElementDecl>;
 %template()  XERCES_CPP_NAMESPACE::NameIdPool<DTDElementDecl>;
 %template(DTDElementDeclEnumerator)  XERCES_CPP_NAMESPACE::NameIdPoolEnumerator<DTDElementDecl>;
 
+%ignore XERCES_CPP_NAMESPACE::DTDEntityDeclEnumerator::operator=;
 %include "xercesc/validators/DTD/DTDEntityDecl.hpp"
 %template()  XERCES_CPP_NAMESPACE::XMLEnumerator<DTDEntityDecl>;
 %template()  XERCES_CPP_NAMESPACE::NameIdPool<DTDEntityDecl>;
@@ -708,60 +718,6 @@ bool DEBUG_UTF8_IN;
 // Unicode string constants for XML Formatter
 %include "xercesc/util/XMLUni.hpp"
 
-//
-// XMLScanner support
-//
-
-// ignore the constructors for now
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::XMLScanner;
-
-// ignore all versions of the following for now
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::emitError;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getURIText;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::scanDocument;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::scanFirst;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::setExternalNoNamespaceSchemaLocation;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::setExternalSchemaLocation;
-
-// ignore these specific ones for now
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocHandler() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocHandler();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocTypeHandler() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDocTypeHandler();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDoNamespaces() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationScheme() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getDoSchema() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationSchemaFullChecking() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityHandler() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityHandler();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorReporter() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorReporter();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorHandler() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorHandler();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getExitOnFirstFatal() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationConstraintFatal() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getIDRefList();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getIDRefList() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getInException() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getLastExtLocation    (XMLCh* const, const unsigned int,
-					   XMLCh* const, const unsigned int,
-					   unsigned int&, unsigned int&);
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getLocator() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getStandalone() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidator() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidator();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorCount();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityDecl(const XMLCh* const) const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityEnumerator() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityDeclPool();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityDeclPool() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getURIStringPool() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getURIStringPool();
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getHasNoDTD() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getExternalSchemaLocation() const;
-%ignore XERCES_CPP_NAMESPACE::XMLScanner::getExternalNoNamespaceSchemaLocation() const;
-
-%include "xercesc/internal/XMLScanner.hpp"
 
 /* 
  * PARSERS (PRETTY IMPORTANT) 
@@ -820,9 +776,9 @@ bool DEBUG_UTF8_IN;
 %ignore TextDecl;
 
 // These are char* versions of XMLCh* methods, and should be ignored
-%ignore XERCES_CPP_NAMESPACE::SAX2XMLReader::parse(const char *const );
-%ignore XERCES_CPP_NAMESPACE::AbstractDOMParser::setExternalSchemaLocation(const char* const);
-%ignore XERCES_CPP_NAMESPACE::AbstractDOMParser::setExternalNoNamespaceSchemaLocation(const char* const);
+// %ignore XERCES_CPP_NAMESPACE::SAX2XMLReader::parse(const char *const );
+// %ignore XERCES_CPP_NAMESPACE::AbstractDOMParser::setExternalSchemaLocation(const char* const);
+// %ignore XERCES_CPP_NAMESPACE::AbstractDOMParser::setExternalNoNamespaceSchemaLocation(const char* const);
 %ignore parse(const char* const, const bool);
 %ignore parseFirst(const char *const,XMLPScanToken&,const bool);
 
@@ -954,11 +910,18 @@ SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getProperty)
 
 // Introduced in DOM Level 3
 // Experimental - subject to change
+
+
+// needed for DOMBuilder
+%include "xercesc/dom/DOMInputSource.hpp"
+%include "xercesc/framework/Wrapper4InputSource.hpp"
+%include "xercesc/framework/Wrapper4DOMInputSource.hpp"
+
 %include "xercesc/dom/DOMBuilder.hpp"
+
 %include "xercesc/dom/DOMImplementationLS.hpp"
 %include "xercesc/dom/DOMImplementationRegistry.hpp"
 %include "xercesc/dom/DOMImplementationSource.hpp"
-%include "xercesc/dom/DOMInputSource.hpp"
 %include "xercesc/dom/DOMLocator.hpp"
 %include "xercesc/dom/DOMWriter.hpp"
 %include "xercesc/dom/DOMWriterFilter.hpp"

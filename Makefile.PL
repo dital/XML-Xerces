@@ -155,10 +155,10 @@ $CFLAGS .= " $CXXFLAGS ";
 
 # We need to know which version of libxerces we are to use. 
 # As of Xerces-C 1.5.1, minor version numbers are used
-my $XERCES_MAJOR_VERSION = '2.3';
+my $XERCES_MAJOR_VERSION = '2.5';
 my $XERCES_MINOR_VERSION = '0';
 my $XERCES_LIB_VERSION = "$XERCES_MAJOR_VERSION.$XERCES_MINOR_VERSION";
-my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-4';
+my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-0';
 my $XERCES_VERSION = "$XERCES_LIB_VERSION";
 
 # find the version of Xerces-C we are using
@@ -190,10 +190,10 @@ my $XERCES_C_VERSION = "$major.$minor.$rev";
 die <<EOE if $XERCES_VERSION ne $XERCES_C_VERSION;
       *** Version Mismatch ***
 
-You are attempt to build XML::Xerces-$XERCES_VERSION using Xerces-C-$XERCES_C_VERSION,
+You are attempt to build XML::Xerces-$XERCES_PERL_VERSION using Xerces-C-$XERCES_C_VERSION,
 this will most likely fail, so I am aborting. 
 
-You must use Xerces-C-$XERCES_C_VERSION
+You must use Xerces-C-$XERCES_LIB_VERSION
 
 EOE
 
@@ -202,6 +202,8 @@ EOE
 my $LIBXERCES = "-lxerces-c";
 if ($^O eq 'cygwin') {
   $LIBXERCES .= "$major$minor.dll";
+} elsif ($^O eq 'MSWin32') {
+  $LIBXERCES = "-lxerces-c_2";
 }
 $LIBS .= " $LIBXERCES";
 
@@ -245,20 +247,6 @@ $HANDLER_LIB:
 my @MACRO;
 $CFLAGS .= '-D_REENTRANT';
 
-if ($^O eq 'MSWin32') {
-# the following info helpful reported by Martin Raspe:
-# From: "Martin Raspe" <raspe@uni-trier.de>
-# Subject: XML::Xerces-2.3.0-0 on Windows
-# To: xerces-p-dev@xml.apache.org
-# Date: Thu, 12 Jun 2003 14:34:02 +0200
-# --
-# Without "-DHAS_BOOL" a lot of "unresolved external ..." linker errors
-# are produced. -TP forces C++ compilation (not needed if the file is
-# named *.cpp), -GX is asked for by the compiler.
-
-  $CFLAGS .= " -DHAS_BOOL -TP -GX";
-}
-
 # we only consider using SWIG if we are a Xerces Developer
 if ($XERCES_DEVEL) {
   # replace this with the path to your Unix compatible find application
@@ -288,6 +276,13 @@ if ($XERCES_DEVEL) {
       die 'unsupported compiler';
     }
     my $SWIG_ARGS = qq[-Wall $OS_DEF $CC_DEF -DXERCES_VERSION="$XERCES_PERL_VERSION" \$(INC) -perl5 -c++ -shadow];
+
+    my $MAKE = '	\$(MAKE) -C Handler static';
+    if ($^O eq 'MSWin32') {
+      # nmake doesn't not honor '-C'
+      $MAKE =  '	cd Handler && \$(MAKE) static';
+    }
+
     my $retval = <<TERMINUS;
 Xerces.cpp: Xerces.i typemaps.i @header_files postSource.pl 
 	\$(SWIG) $SWIG_ARGS -o Xerces.cpp Xerces.i
@@ -304,7 +299,7 @@ cp -f Xerces.pm blib/lib/XML ; \\
 	fi
 
 $HANDLER_LIB:
-	\$(MAKE) -C Handler static
+$MAKE
 TERMINUS
     return $retval;
   }

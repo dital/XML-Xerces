@@ -11,7 +11,7 @@ Xerces Perl: The Perl API to the Apache Xerces XML parser
 
 
 
-1) Current Release: XML::Xerces 2.3.0-4
+1) Current Release: XML::Xerces 2.5.0-0
 ========================
 
 XML::Xerces is the Perl API to the Apache project's Xerces XML parser. It
@@ -83,7 +83,7 @@ The code has been tested on the following platforms:
     ------------------------
 
 	#### NOTE: ####
-	Required version: 2.3.0
+	Required version: 2.5.0
 	###############
 
     (which can be downloaded from the apache archive <URL:
@@ -113,8 +113,8 @@ The code has been tested on the following platforms:
 
     Unpack the archive in a directory of your choice. Example (for UNIX):
 
-    * tar zxvf XML-Xerces-2.3.0-4.tar.gz
-    * cd XML-Xerces-2.3.0-4
+    * tar zxvf XML-Xerces-2.5.0-0.tar.gz
+    * cd XML-Xerces-2.5.0-0
 
     4.4) Getting Xerces-C
     ------------------------
@@ -133,7 +133,7 @@ The code has been tested on the following platforms:
     needs to be to build Xerces-C):
 
 
-	export XERCESCROOT=/home/jasons/xerces-2.3.0/
+	export XERCESCROOT=/home/jasons/xerces-2.5.0/
       
     If you choose to install Xerces-C on your system, you need to set the
     XERCES_INCLUDE and XERCES_LIB environment variables:
@@ -145,7 +145,7 @@ The code has been tested on the following platforms:
 5) Build XML::Xerces
 ========================
 
-    A) Go to the XML-Xerces-2.3.0-4 directory.
+    A) Go to the XML-Xerces-2.5.0-0 directory.
     B) Build XML::Xerces as you would any perl package that you might get from
 	CPAN:
         * perl Makefile.PL

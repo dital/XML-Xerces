@@ -26,6 +26,7 @@ hints/linux.pl
 hints/solaris_2.pl
 hints/aix.pl
 hints/hpux.pl
+hints/mswin32.pl
 
 # user level documents
 Changes
@@ -38,6 +39,7 @@ TODO
 docs/XMLUni.txt
 
 # sample documents
+samples/validator-dom.pl
 samples/personal-no-xmldecl.xml
 samples/catalog.dtd
 samples/catalog.xml
@@ -50,6 +52,8 @@ samples/public.xml
 samples/system.xml
 
 # sample programs
+samples/validator.pl
+samples/XMLSimple.pm
 samples/DOM2hash.pl
 samples/EnumVal.pl
 samples/SEnumVal.pl
@@ -60,47 +64,54 @@ samples/SAXCount.pl
 samples/SAX2Count.pl
 
 # tests
-t/AttributeList.t
-t/Attributes.t
-t/XercesDOMParser.t
+
+# sample applications
 t/DOMCreate.t
+t/SAX2Count.t
+t/SAXCount.t
+t/DOMCount.t
+t/DOMPrint.t
+
+# DOM
+t/XercesDOMParser.t
 t/DOMNamedNodeMap.t
 t/DOMNodeList.t
 t/DOMEntity.t
-t/DOMCount.t
-t/DOMPrint.t
 t/DOMDocument.t
 t/DOMNode.t
 t/DOMException.t
-t/letter.xml
+t/DOMBuilder.t
+t/DOMParser.t
+t/DOMNodeIterator.t
+t/DOMTreeWalker.t
 t/DOMAttr.t
 t/DOMElement.t
 t/DOMWriter.t
+
+t/AttributeList.t
+t/Attributes.t
 t/InputSource.t
 t/SAXException.t
-t/SAXCount.t
 t/SAXParser.t
 t/LocalFileInputSource.t
 t/MemBufInputSource.t
 t/StdInInputSource.t
 t/URLInputSource.t
-t/TestUtils.pm
 t/PerlErrorHandler.t
-t/SAX2Count.t
+t/SAX2XMLReader.t
 t/XMLException.t
 t/EntityResolver.t
 t/Schema.t
 t/Grammar.t
-t/DOMNodeIterator.t
-t/DOMTreeWalker.t
-t/XMLScanner.t
 t/XMLURL.t
 t/XMLUri.t
 t/XMLUni.t
-t/DOMBuilder.t
-t/DOMParser.t
-t/SAX2XMLReader.t
+
+# SWIG casting test
 t/actualCast.t
+
+t/letter.xml
+t/TestUtils.pm
 
 # administrivia
 META.yml                                 Module meta-data (added by MakeMaker)

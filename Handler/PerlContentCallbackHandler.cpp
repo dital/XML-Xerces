@@ -7,17 +7,11 @@ PerlContentCallbackHandler::PerlContentCallbackHandler()
 }
 
 PerlContentCallbackHandler::~PerlContentCallbackHandler()
-{
-    if (callbackObj != NULL) {
-	SvREFCNT_dec(callbackObj);
-	callbackObj = NULL;
-    }
-}
+{}
 
 PerlContentCallbackHandler::PerlContentCallbackHandler(SV *obj)
-{
-    set_callback_obj(obj);
-}
+  : PerlCallbackHandler(obj)
+{}
 
 // SV*
 // PerlContentCallbackHandler::set_callback_obj(SV* object) {

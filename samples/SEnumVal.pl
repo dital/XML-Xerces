@@ -156,6 +156,4 @@ my $t1 = new Benchmark;
 my $td = timediff($t1, $t0);
 
 print STDOUT "$file: duration: ", timestr($td), "\n";
-
-
-__END__
+exit(0);
