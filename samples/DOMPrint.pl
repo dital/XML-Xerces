@@ -67,7 +67,7 @@
 ######################################################################
 
 use strict;
-use blib;
+# use blib;
 use XML::Xerces;
 use Getopt::Long;
 use vars qw();
@@ -130,12 +130,11 @@ eval {$parser->parse ($file)};
 XML::Xerces::error($@) if ($@);
 
 my $doc = $parser->getDocument();
-
 my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
 my $writer = $impl->createDOMWriter();
-if ($writer->canSetFeature('format-pretty-print',1)) {
-  $writer->setFeature('format-pretty-print',1);
+if ($writer->canSetFeature("$XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint",1)) {
+  $writer->setFeature("$XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint",1);
 }
 my $target = XML::Xerces::StdOutFormatTarget->new();
 $writer->writeNode($target,$doc);
-
+exit(0);

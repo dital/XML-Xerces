@@ -158,7 +158,7 @@ $CFLAGS .= " $CXXFLAGS ";
 my $XERCES_MAJOR_VERSION = '2.3';
 my $XERCES_MINOR_VERSION = '0';
 my $XERCES_LIB_VERSION = "$XERCES_MAJOR_VERSION.$XERCES_MINOR_VERSION";
-my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-2';
+my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-4';
 my $XERCES_VERSION = "$XERCES_LIB_VERSION";
 
 # find the version of Xerces-C we are using
@@ -200,6 +200,9 @@ EOE
 # this substitution will yield '1_4' from '1.4' to be used by 'LIBS'
 # $XERCES_LIB_VERSION =~ s/\./_/g;
 my $LIBXERCES = "-lxerces-c";
+if ($^O eq 'cygwin') {
+  $LIBXERCES .= "$major$minor.dll";
+}
 $LIBS .= " $LIBXERCES";
 
 # now we ensure that libxerces is in the library path
@@ -242,6 +245,20 @@ $HANDLER_LIB:
 my @MACRO;
 $CFLAGS .= '-D_REENTRANT';
 
+if ($^O eq 'MSWin32') {
+# the following info helpful reported by Martin Raspe:
+# From: "Martin Raspe" <raspe@uni-trier.de>
+# Subject: XML::Xerces-2.3.0-0 on Windows
+# To: xerces-p-dev@xml.apache.org
+# Date: Thu, 12 Jun 2003 14:34:02 +0200
+# --
+# Without "-DHAS_BOOL" a lot of "unresolved external ..." linker errors
+# are produced. -TP forces C++ compilation (not needed if the file is
+# named *.cpp), -GX is asked for by the compiler.
+
+  $CFLAGS .= " -DHAS_BOOL -TP -GX";
+}
+
 # we only consider using SWIG if we are a Xerces Developer
 if ($XERCES_DEVEL) {
   # replace this with the path to your Unix compatible find application
@@ -270,15 +287,15 @@ if ($XERCES_DEVEL) {
     } else {
       die 'unsupported compiler';
     }
-    my $SWIG_ARGS = qq[-Wall $OS_DEF $CC_DEF -DVERSION="$XERCES_PERL_VERSION" \$(INC) -perl5 -c++ -shadow];
+    my $SWIG_ARGS = qq[-Wall $OS_DEF $CC_DEF -DXERCES_VERSION="$XERCES_PERL_VERSION" \$(INC) -perl5 -c++ -shadow];
     my $retval = <<TERMINUS;
-Xerces.C: Xerces.i typemaps.i @header_files postSource.pl 
-	\$(SWIG) $SWIG_ARGS -o Xerces.C Xerces.i
-	perl postSource.pl Xerces.C
+Xerces.cpp: Xerces.i typemaps.i @header_files postSource.pl 
+	\$(SWIG) $SWIG_ARGS -o Xerces.cpp Xerces.i
+	perl postSource.pl Xerces.cpp
 	perl postModule.pl Xerces.pm
 
 
-Xerces.pm: Xerces.C postModule.pl Xerces-extra.pm
+Xerces.pm: Xerces.cpp postModule.pl Xerces-extra.pm
 	if [[ postModule.pl -nt Xerces.pm || Xerces-extra.pm -nt Xerces.pm ]] ; then \\
 \$(SWIG) $SWIG_ARGS -o foo.C Xerces.i ; \\
 rm foo.C ; \\

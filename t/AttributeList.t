@@ -102,8 +102,8 @@ ok($DOCUMENT_HANDLER->{test} eq $value);
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
-print STDERR "<$DOCUMENT_HANDLER->{test}>" , "\n";
-print STDERR "<$value>" , "\n";
+# print STDERR "<$DOCUMENT_HANDLER->{test}>" , "\n";
+# print STDERR "<$value>" , "\n";
 ok($DOCUMENT_HANDLER->{test} eq $value);
 
 # test to_hash()

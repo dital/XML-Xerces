@@ -29,7 +29,7 @@ ok($loaded, "module loaded");
 # (correspondingly "not ok 13") depending on the success of chunk 13
 # of the test code):
 
-my $document = q[<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+my $document = q[<?xml version="1.0" encoding="iso-8859-1" standalone="yes" ?>
 <contributors>
 
   <person Role="manager">

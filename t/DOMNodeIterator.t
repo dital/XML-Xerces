@@ -8,7 +8,7 @@ END {ok(0) unless $loaded;}
 
 use Carp;
 
-# use blib;
+use blib;
 use XML::Xerces;
 use Test::More tests => 5;
 use Config;

@@ -19,21 +19,29 @@ END {
 
 package XML::Xerces;
 use Carp;
-use vars qw(@EXPORT_OK);
+use vars qw(@EXPORT_OK $VERSION);
 @EXPORT_OK = qw(error);
+$VERSION = q[2.3.0-4];
+
 sub error {
   my $error = shift;
-  print STDERR "Error in eval: ";
+  my $context = shift;
+  my $msg = "Error in eval: ";
   if (ref $error) {
     if ($error->isa('XML::Xerces::DOMException')) {
-      croak "Message: <", $error->getMessage(), 
-	"> Code: ", $XML::Xerces::DOMException::CODES[$error->getCode];
+      $msg .= "Message: <"
+        . $error->getMessage()
+	. "> Code: "
+        . $XML::Xerces::DOMException::CODES[$error->getCode];
     } else {
-      croak $error->getMessage();
+      $msg .= $error->getMessage();
     }
   } else {
-    croak $error;
+    $msg .= $error;
   }
+  $msg .= ", Context: $context"
+    if defined $context;
+  croak($msg);
 }
 
 package XML::Xerces::DOMException;
@@ -182,6 +190,38 @@ EOT
 
 sub reset_errors {}
 
+package XML::Xerces::XMLAttDefList;
+#
+# This class is both a list and a hash, so at the moment we
+# enable users to choose how to access the information. Perhaps
+# in the future we will use an order preserving hash like Tie::IxHash.
+#
+
+# convert the AttDefList to a perl list
+sub to_list {
+  my $self = shift;
+  my @list;
+  if ($self->hasMoreElements()) {
+    while ($self->hasMoreElements()) {
+      push(@list,$self->nextElement());
+    }
+  }
+  return @list;
+}
+
+# convert the AttDefList to a perl hash
+sub to_hash {
+  my $self = shift;
+  my %hash;
+  if ($self->hasMoreElements()) {
+    while ($self->hasMoreElements()) {
+      my $attr = $self->nextElement();
+      $hash{$attr->getFullName()} = $attr;
+    }
+  }
+  return %hash;
+}
+
 package XML::Xerces::DOMNodeList;
 # convert the NodeList to a perl list
 sub to_list {
@@ -289,6 +329,7 @@ sub serialize {
 package XML::Xerces::DOMElement;
 sub serialize {
   my ($self,$indent) = @_;
+  $indent ||= 0;
   my $output;
   ELEMENT: {
     my $node_name = $self->getNodeName;
@@ -387,14 +428,84 @@ sub getCode {
   return shift->{code};
 }
 
+# in previous versions we needed to define this method
+# but it is now obsolete
 package XML::Xerces::DOMElement;
 sub get_text {
-  my $node = shift;
-  my @nodes = $node->getChildNodes();
-  my $text;
-  foreach (@nodes) {
-    $text .= $_->getNodeValue()
-      if $_->isa('XML::Xerces::DOMText');
-  }
-  return $text;
+  my $self = shift;
+  warn "XML::Xerces::DOMElement::get_text is depricated, use getTextContent instead";
+  return $self->getTextContent(@_);
 }
+
+package XML::Xerces::XMLCatalogResolver;
+use XML::Xerces qw(error);
+use strict;
+use Carp;
+use vars qw($VERSION
+	    @ISA
+	    @EXPORT
+	    @EXPORT_OK
+	    $CATALOG
+	    %MAPS
+	    %REMAPS
+	   );
+require Exporter;
+
+@ISA = qw(Exporter XML::Xerces::PerlEntityResolver);
+@EXPORT_OK = qw();
+
+sub new {
+  my $pkg = shift;
+  my $catalog = shift;
+  my $self = bless {}, $pkg;
+  $self->initialize($catalog);
+  return $self;
+}
+
+sub initialize {
+  my $self = shift;
+
+  # allow callers to set the global variable
+  $CATALOG = shift
+    unless $CATALOG;
+
+  my $DOM = XML::Xerces::XercesDOMParser->new();
+  my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
+  $DOM->setErrorHandler($ERROR_HANDLER);
+
+  # we parse the example XML Catalog
+  eval{$DOM->parse($CATALOG)};
+  error ($@, __PACKAGE__ . ": Couldn't parse catalog: $CATALOG")
+      if $@;
+
+  # now retrieve the mappings
+  my $doc = $DOM->getDocument();
+  my @Maps = $doc->getElementsByTagName('Map');
+  %MAPS = map {($_->getAttribute('PublicId'),
+		   $_->getAttribute('HRef'))} @Maps;
+  my @Remaps = $doc->getElementsByTagName('Remap');
+  %REMAPS = map {($_->getAttribute('SystemId'),
+		     $_->getAttribute('HRef'))} @Remaps;
+}
+
+sub resolve_entity {
+  my ($self,$pub,$sys) = @_;
+#   print STDERR "Got PUBLIC: $pub\n";
+#   print STDERR "Got SYSTEM: $sys\n";
+
+  # now check which one we were asked for
+  my $href;
+  if ($pub) {
+    $href = $MAPS{$pub};
+  } elsif ($sys) {
+    $href = $REMAPS{$sys};
+  } else {
+    croak("Neither PublicId or SystemId were defined");
+  }
+
+  my $is = eval {XML::Xerces::LocalFileInputSource->new($href)};
+  error($@,"Couldn't create input source for $href")
+      if $@;
+  return $is;
+}
+

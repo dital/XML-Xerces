@@ -8,11 +8,11 @@
 XERCES_CPP_NAMESPACE_USE
 
 class PerlContentCallbackHandler  : public ContentHandler
-//				 , public PerlCallbackHandler 
+				 , public PerlCallbackHandler 
 {
 
 protected:
-    SV *callbackObj;
+//    SV *callbackObj;
 
 public:
 
@@ -20,7 +20,7 @@ public:
     PerlContentCallbackHandler(SV *obj);
     ~PerlContentCallbackHandler();
 
-    SV* set_callback_obj(SV*);
+    int type() {return PERLCALLBACKHANDLER_CONTENT_TYPE;}
 
 	// The ContentHandler interface
     void startElement(const   XMLCh* const    uri,

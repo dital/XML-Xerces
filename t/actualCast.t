@@ -4,20 +4,20 @@
 
 ######################### We start with some black magic to print on failure.
 
-END {ok(0) unless $loaded;}
+END {fail() unless $loaded;}
 
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 3;
+use Test::More tests => 11;
 
 use lib 't';
-use TestUtils qw($DOM $PERSONAL $PERSONAL_FILE_NAME);
+use TestUtils qw($DOM $PERSONAL $PERSONAL_FILE_NAME $PERSONAL_SCHEMA_FILE_NAME);
 use vars qw($loaded);
 use strict;
 
 $loaded = 1;
-ok($loaded, "module loaded");
+pass("module loaded");
 
 ######################### End of black magic.
 
@@ -25,11 +25,33 @@ ok($loaded, "module loaded");
 # (correspondingly "not ok 13") depending on the success of chunk 13
 # of the test code):
 
-$DOM->parse( new XML::Xerces::LocalFileInputSource($PERSONAL_FILE_NAME) );
+$DOM->parse($PERSONAL_FILE_NAME);
 
 # test that we get a subclass of DOMNode back
 my $name = $DOM->getDocument->getElementsByTagName('link')->item(0);
-ok(ref($name) && $name->isa('XML::Xerces::DOMNode'));
+isa_ok($name,'XML::Xerces::DOMNode');
 
 # test that it really is a subclass
-ok(ref($name) ne 'XML::Xerces::DOMNode');
+isa_ok($name,'XML::Xerces::DOMElement');
+
+# now test the grammars
+my $grammar = $DOM->getRootGrammar();
+isa_ok($grammar,'XML::Xerces::Grammar');
+isa_ok($grammar,'XML::Xerces::DTDGrammar');
+
+# now with a W3C XML Schema
+$DOM->setDoNamespaces (1);
+$DOM->setDoSchema (1);
+$DOM->parse($PERSONAL_SCHEMA_FILE_NAME);
+
+$grammar = $DOM->getRootGrammar();
+isa_ok($grammar,'XML::Xerces::Grammar');
+isa_ok($grammar,'XML::Xerces::SchemaGrammar');
+
+# now test the CallbackHandler's
+SKIP: {
+  skip "return of CallbackHandler's not implemented", 2;
+  my $handler = $DOM->getErrorHandler();
+  isa_ok($handler,'XML::Xerces::PerlCallbackHandler');
+  isa_ok($handler,'XML::Xerces::PerlErrorCallbackHandler');
+}

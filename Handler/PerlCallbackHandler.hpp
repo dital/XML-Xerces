@@ -33,19 +33,31 @@ extern "C" {
 #endif
 #endif
 
+#define PERLCALLBACKHANDLER_BASE_TYPE         -1
+#define PERLCALLBACKHANDLER_ERROR_TYPE         0
+#define PERLCALLBACKHANDLER_ENTITY_TYPE        1
+#define PERLCALLBACKHANDLER_NODE_TYPE          2
+#define PERLCALLBACKHANDLER_CONTENT_TYPE       3
+#define PERLCALLBACKHANDLER_DOCUMENT_TYPE      4
+
 class PerlCallbackHandler {
+
+private:
+
+    PerlCallbackHandler(PerlCallbackHandler*);
 
 protected:
 
-public:
-
     SV *callbackObj;
+
+public:
 
     PerlCallbackHandler();
     PerlCallbackHandler(SV*);
     virtual ~PerlCallbackHandler();
+    virtual int type() {return PERLCALLBACKHANDLER_BASE_TYPE;}
 
-//    SV* set_callback_obj(SV*);
+    SV* set_callback_obj(SV*);
 };
 
 #endif /* __PERLCALLBACKHANDLER */

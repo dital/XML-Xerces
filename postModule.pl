@@ -117,22 +117,21 @@ EOT
     #   DOMNodeList: automatically convert to perl list
     #      if called in a list context
     if (grep {/$CURR_CLASS/} @domnode_list_methods) {
-      if (my ($sub) = /^sub\s+([\w_]+)/) {
-	$sub = "$ {CURR_CLASS}::$sub";
-	if (grep {/$sub$/} @domnode_list_methods) {
-	  my $fix = <<'EOT';
-    unless (defined $result) {
+      my $CLASS = "XML::Xercesc::$CURR_CLASS";
+      if (my ($sub) = /^*(\w+)/) {
+	my $full_sub = "$ {CURR_CLASS}::$sub";
+	if (grep {/$full_sub$/} @domnode_list_methods) {
+	  print TEMP <<"EOT";
+sub $sub {
+    my \$result = $ {CLASS}_$sub(\@_);
+    unless (defined \$result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
-    return $result->to_list() if wantarray;
-    $DOMNodeList::OWNER{$result} = 1; 
+    return \$result->to_list() if wantarray;
+    return \$result; # if *not* wantarray
+}
 EOT
-	  fix_method(\*FILE,
-		     \*TEMP,
-		     qr/return undef/,
-		     $fix
-		    );
 	  next;
 	}
       }
@@ -141,22 +140,21 @@ EOT
     #   DOMNamedNodeMap: automatically convert to perl hash
     #      if called in a list context
     if (grep {/$CURR_CLASS/} @domnode_map_methods) {
-      if (my ($sub) = /^sub\s+([\w_]+)/) {
-	$sub = "$ {CURR_CLASS}::$sub";
-	if (grep {/$sub$/} @domnode_map_methods) {
-	  my $fix = <<'EOT';
-    unless (defined $result) {
+      my $CLASS = "XML::Xercesc::$CURR_CLASS";
+      if (my ($sub) = /^*(\w+)/) {
+	my $full_sub = "$ {CURR_CLASS}::$sub";
+	if (grep {/$full_sub$/} @domnode_map_methods) {
+	  print TEMP <<"EOT";
+sub $sub {
+    my \$result = $ {CLASS}_$sub(\@_);
+    unless (defined \$result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
-    return $result->to_hash() if wantarray;
-    $DOMNamedNodeMap::OWNER{$result} = 1;
+    return \$result->to_hash() if wantarray;
+    return \$result; # if *not* wantarray
+}
 EOT
-	  fix_method(\*FILE,
-		     \*TEMP,
-		     qr/return undef/,
-		     $fix,
-		     );
 	  next;
 	}
       }
@@ -167,13 +165,13 @@ EOT
       if (/^sub\s+new/) {
 	my $fix = <<'EOT';
     # SYSTEM ID is *optional*
-    if (scalar @args == 1) {
-      push(@args,'FAKE_SYSTEM_ID');
+    if (scalar @_ == 1) {
+      push(@_,'FAKE_SYSTEM_ID');
     }
 EOT
 	fix_method(\*FILE,
 		   \*TEMP,
-		   qr/my \@args/,
+		   qr/my \$pkg/,
 		   $fix,
 		   1);
 	next;
@@ -190,11 +188,7 @@ sub $1 {
     if (\$args[0]->isa('XML::Xerces::DOMDocument')) {
       \$args[0] = \$args[0]->toDOMNode();
     }
-    my \$result = XML::Xercesc::DOMNode_$1(\@args);
-    return \$result unless UNIVERSAL::isa(\$result,'XML::Xerces');
-    my \%resulthash;
-    tie \%resulthash, ref(\$result), \$result;
-    return bless \\\%resulthash, ref(\$result);
+    return XML::Xercesc::DOMNode_$1(\@args);
 }
 EOT
 	next;
@@ -222,11 +216,7 @@ sub writeNode {
     if ($args[2]->isa('XML::Xerces::DOMDocument')) {
       $args[2] = $args[2]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMWriter_writeNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMWriter_writeNode(@args);
 }
 EOT
 	next;
@@ -238,11 +228,7 @@ sub writeToString {
     if ($args[1]->isa('XML::Xerces::DOMDocument')) {
       $args[1] = $args[1]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMWriter_writeToString(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMWriter_writeToString(@args);
 }
 EOT
 	next;
@@ -260,9 +246,7 @@ sub setAttribute {
     my \$result = XML::Xercesc::DOMElement_setAttribute(\@_);
     return \$result unless ref(\$result) =~ m[XML::Xerces];
     \$XML::Xerces::DOMAttr::OWNER{\$result} = 1; 
-    my %resulthash;
-    tie %resulthash, ref(\$result), \$result;
-    return bless \\\%resulthash, ref(\$result);
+    return \$result;
 }
 EOT
         next;
@@ -325,7 +309,8 @@ sub setErrorHandler {
   my (\$self,\$handler) = \@_;
   my \$retval;
   my \$callback = \$XML::Xerces::$ {class}::OWNER{\$self}->{__ERROR_HANDLER};
-  if (defined \$callback) {
+#  if (defined \$callback) {
+  if (0) {
     \$retval = \$callback->set_callback_obj(\$handler);
   } else {
     \$callback = XML::Xerces::PerlErrorCallbackHandler->new(\$handler);
@@ -347,7 +332,8 @@ EOT
 sub setEntityResolver {
   my (\$self,\$handler) = \@_;
   my \$callback = \$XML::Xerces::$ {class}::OWNER{\$self}->{__ENTITY_RESOLVER};
-  if (defined \$callback) {
+#  if (defined \$callback) {
+  if (0) {
     \$callback->set_callback_obj(\$handler);
   } else {
     \$callback = XML::Xerces::PerlEntityResolverHandler->new(\$handler);
@@ -365,7 +351,8 @@ EOT
 sub setDocumentHandler {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAXParser::OWNER{$self}->{__DOCUMENT_HANDLER};
-  if (defined $callback) {
+#  if (defined \$callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlDocumentCallbackHandler->new($handler);
@@ -385,7 +372,8 @@ EOT
 sub setContentHandler {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAX2XMLReader::OWNER{$self}->{__CONTENT_HANDLER};
-  if (defined $callback) {
+#  if (defined \$callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlContentCallbackHandler->new($handler);
@@ -399,11 +387,13 @@ EOT
     }
 
     if ($CURR_CLASS eq 'DOMDocumentTraversal') {
-      if (/^sub\s+createTreeWalker/) {
-	my $fix = <<'EOT';
+      if (/^*createTreeWalker/) {
+	print TEMP <<'EOT';
+sub createTreeWalker {
     my ($self,$root,$what,$filter,$expand) = @_;
     my $callback = $XML::Xerces::DOMTreeWalker::OWNER{$self}->{__NODE_FILTER};
-    if (defined $callback) {
+#    if (defined \$callback) {
+    if (0) {
       $callback->set_callback_obj($filter);
     } else {
       $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
@@ -413,22 +403,21 @@ EOT
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMDocumentTraversal();
     }
+    return XML::Xercesc::DOMDocumentTraversal_createTreeWalker(@args);
+}
 EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/my \@args/,
-		   $fix,
-		   0);
 	next;
       }
     }
 
     if ($CURR_CLASS eq 'DOMDocumentTraversal') {
-      if (/^sub\s+createNodeIterator/) {
-	my $fix = <<'EOT';
+      if (/^*createNodeIterator/) {
+	print TEMP <<'EOT';
+sub createNodeIterator {
     my ($self,$root,$what,$filter,$expand) = @_;
     my $callback = $XML::Xerces::DOMNodeIterator::OWNER{$self}->{__NODE_FILTER};
-    if (defined $callback) {
+#    if (defined \$callback) {
+    if (0) {
       $callback->set_callback_obj($filter);
     } else {
       $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
@@ -438,25 +427,9 @@ EOT
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMDocumentTraversal();
     }
+    return XML::Xercesc::DOMDocumentTraversal_createNodeIterator(@args);
+}
 EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/my \@args/,
-		   $fix,
-		   0);
-	next;
-      }
-    }
-
-    if ($CURR_CLASS eq 'DOMWriter') {
-      if (/^sub\s+createNodeIterator/) {
-	my $fix = <<'EOT';
-EOT
-	fix_method(\*FILE,
-		   \*TEMP,
-		   qr/my \@args/,
-		   $fix,
-		   0);
 	next;
       }
     }

@@ -7,11 +7,10 @@
 XERCES_CPP_NAMESPACE_USE
 
 class PerlErrorCallbackHandler : public ErrorHandler
-//			       , public PerlCallbackHandler 
+			       , public PerlCallbackHandler 
 {
 
 protected:
-    SV *callbackObj;
 
 public:
 
@@ -19,7 +18,7 @@ public:
     PerlErrorCallbackHandler(SV *obj);
     ~PerlErrorCallbackHandler();
 
-    SV* set_callback_obj(SV*);
+    int type() {return PERLCALLBACKHANDLER_ERROR_TYPE;}
 
 	// the ErrorHandler interface
     void warning(const SAXParseException& exception);

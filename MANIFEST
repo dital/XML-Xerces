@@ -1,10 +1,13 @@
-ANNOUNCE
-Changes
-FAQ
+# the code..
+Xerces.cpp
+Xerces.pm
+
+Makefile.PL
+MANIFEST
+
 Handler/Makefile.PL
 Handler/PerlCallbackHandler.cpp
 Handler/PerlCallbackHandler.hpp
-Handler/PerlCallbackHandler.swig.hpp
 Handler/PerlCallbackHandler.cpp
 Handler/PerlContentCallbackHandler.hpp
 Handler/PerlDocumentCallbackHandler.cpp
@@ -16,43 +19,25 @@ Handler/PerlEntityResolverHandler.i
 Handler/PerlNodeFilterCallbackHandler.hpp
 Handler/PerlNodeFilterCallbackHandler.i
 Handler/PerlContentCallbackHandler.cpp
-Handler/PerlNodeFilterCallbackHandler.swig.hpp
-INSTALL
-LICENSE
-MANIFEST
-Makefile.PL
-README
-SWIG.pm
-TODO
-Xerces.i
-Xerces.C
-Xerces.pm
-Xerces-extra.pm
-docs/apidocs.xml
-docs/blueb.gif
-docs/dtd/blocks.ent
-docs/dtd/book.dtd
-docs/dtd/characters.ent
-docs/dtd/document.dtd
-docs/dtd/entities.ent
-docs/dtd/faqs.dtd
-docs/dtd/links.ent
-docs/dtd/markup.ent
-docs/entities.ent
-docs/faq-using.xml
-docs/feedback.xml
-docs/install.xml
-docs/readme.xml
-docs/releases.xml
-docs/samples.xml
-docs/xerces-perl_book.xml
+
+hints/darwin.pl
 hints/dec_osf.pl
 hints/linux.pl
 hints/solaris_2.pl
 hints/aix.pl
 hints/hpux.pl
-postModule.pl
-postSource.pl
+
+# user level documents
+Changes
+FAQ
+INSTALL
+LICENSE
+README
+TODO
+
+docs/XMLUni.txt
+
+# sample documents
 samples/personal-no-xmldecl.xml
 samples/catalog.dtd
 samples/catalog.xml
@@ -63,11 +48,18 @@ samples/personal-no-doctype.xml
 samples/personal.xsd
 samples/public.xml
 samples/system.xml
+
+# sample programs
+samples/DOM2hash.pl
+samples/EnumVal.pl
+samples/SEnumVal.pl
 samples/DOMCount.pl
 samples/DOMCreate.pl
 samples/DOMPrint.pl
 samples/SAXCount.pl
 samples/SAX2Count.pl
+
+# tests
 t/AttributeList.t
 t/Attributes.t
 t/XercesDOMParser.t
@@ -80,8 +72,6 @@ t/DOMPrint.t
 t/DOMDocument.t
 t/DOMNode.t
 t/DOMException.t
-t/XMLURL.t
-t/XMLUri.t
 t/letter.xml
 t/DOMAttr.t
 t/DOMElement.t
@@ -94,7 +84,6 @@ t/LocalFileInputSource.t
 t/MemBufInputSource.t
 t/StdInInputSource.t
 t/URLInputSource.t
-t/actualCast.t
 t/TestUtils.pm
 t/PerlErrorHandler.t
 t/SAX2Count.t
@@ -105,5 +94,49 @@ t/Grammar.t
 t/DOMNodeIterator.t
 t/DOMTreeWalker.t
 t/XMLScanner.t
-typemaps.i
+t/XMLURL.t
+t/XMLUri.t
+t/XMLUni.t
+t/DOMBuilder.t
+t/DOMParser.t
+t/SAX2XMLReader.t
+t/actualCast.t
+
+# administrivia
 META.yml                                 Module meta-data (added by MakeMaker)
+
+# These are only useful for developers and those wishing to regenerate
+# Xerces.cpp and Xerces.pm
+Xerces-extra.pm
+Xerces.i
+SWIG.pm
+Handler/PerlCallbackHandler.swig.hpp
+postModule.pl
+postSource.pl
+typemaps.i
+
+# this is for internal use by developers making a release
+# ANNOUNCE
+
+#
+# these are old and of no use
+#
+# docs/apidocs.xml
+# docs/blueb.gif
+# docs/dtd/blocks.ent
+# docs/dtd/book.dtd
+# docs/dtd/characters.ent
+# docs/dtd/document.dtd
+# docs/dtd/entities.ent
+# docs/dtd/faqs.dtd
+# docs/dtd/links.ent
+# docs/dtd/markup.ent
+# docs/entities.ent
+# docs/faq-using.xml
+# docs/feedback.xml
+# docs/install.xml
+# docs/readme.xml
+# docs/releases.xml
+# docs/samples.xml
+# docs/xerces-perl_book.xml
+

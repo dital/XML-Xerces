@@ -65,7 +65,7 @@
 
 use strict;
 # use blib;
-use XML::Xerces;
+use XML::Xerces qw(error);
 use Getopt::Long;
 use vars qw($opt_v $opt_n);
 use Benchmark;
@@ -141,25 +141,20 @@ sub ignorable_whitespace {
 package main;
 my $parser = XML::Xerces::XMLReaderFactory::createXMLReader();
 eval {
-  $parser->setFeature("http://xml.org/sax/features/namespaces", $namespace);
+  $parser->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreNameSpaces", $namespace);
   if ($validate eq $XML::Xerces::SAX2XMLReader::Val_Auto) {
-    $parser->setFeature("http://xml.org/sax/features/validation", 1);
-    $parser->setFeature("http://apache.org/xml/features/validation/dynamic", 1);
+    $parser->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 1);
+    $parser->setFeature("$XML::Xerces::XMLUni::fgXercesDynamic", 1);
   } elsif ($validate eq $XML::Xerces::SAX2XMLReader::Val_Never) {
-    $parser->setFeature("http://xml.org/sax/features/validation", 0);
+    $parser->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 0);
   } elsif ($validate eq $XML::Xerces::SAX2XMLReader::Val_Always) {
-    $parser->setFeature("http://xml.org/sax/features/validation", 1);
-    $parser->setFeature("http://apache.org/xml/features/validation/dynamic", 0);
+    $parser->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 1);
+    $parser->setFeature("$XML::Xerces::XMLUni::fgXercesDynamic", 0);
   }
-  $parser->setFeature("http://apache.org/xml/features/validation/schema", $schema);
+  $parser->setFeature("$XML::Xerces::XMLUni::fgXercesSchema", $schema);
 };
-if ($@) {
-  if (ref $@) {
-    die $@->getMessage();
-  } else {
-    die $@;
-  }
-}
+error ($@) if $@;
+
 my $error_handler = XML::Xerces::PerlErrorHandler->new();
 $parser->setErrorHandler($error_handler);
 

@@ -25,7 +25,7 @@
 
 %{
 SV*
-XMLString2Perl(XMLCh* input){
+XMLString2Perl(const XMLCh* input) {
     SV *output;
   unsigned int charsEaten = 0;
   int length  = XMLString::stringLen(input);      // string length
@@ -107,7 +107,7 @@ Perl2XMLString(SV* input){
   if (SvPOK($input)||SvIOK($input)||SvNOK($input)) {
     $1 = Perl2XMLString($input);
   } else {
-    croak("Type error in argument 2 of $name, Expected perl-string.");
+    croak("Type error in argument 2 of $symname, Expected perl-string.");
     XSRETURN(1);
   }
 }
@@ -122,6 +122,11 @@ Perl2XMLString(SV* input){
   ++argvi;
 }
 
+// varout typemap (for global variables)
+%typemap(varout) XMLCh[] {
+  sv_setsv((SV*)$result, XMLString2Perl($1));
+}
+
 //
 //  MemBufInputSource::MemBufInputSource()
 // 
@@ -132,7 +137,12 @@ Perl2XMLString(SV* input){
 // CONSTRUCTOR
 // 
 
-%typemap(in) (const XMLByte* const srcDocBytes, unsigned int byteCount) {
+// PERL SHOULD IGNORE THIS ARGUMENT 
+// %typemap(in,numinputs=0) (unsigned int byteCount) "$1 = 0;" 
+%typemap(in,numinputs=0) (const bool adoptBuffer) "$1 = true;"
+
+%typemap(in) (const XMLByte* const srcDocBytes, 
+	      unsigned int byteCount) {
   if (SvPOK($input)||SvIOK($input)||SvNOK($input)) {
     STRLEN len;
     XMLByte *xmlbytes = (XMLByte *)SvPV($input, len);
@@ -144,9 +154,6 @@ Perl2XMLString(SV* input){
     XSRETURN(1);
   }
 }
-
-// PERL SHOULD IGNORE THIS ARGUMENT 
-%typemap(in,numinputs=0) const unsigned int byteCount {}
 
 // 
 // FOR Perl*Handler MEMBER FUNCTIONS, SO PERL SCALAR DOESN'T GET WRAPPED 
@@ -173,14 +180,73 @@ XMLCh*, const XMLCh*
 }
 
 //
-// IDOM_Node*
+// Grammar*
 //
 
-// %typemap(out) DOMNode* {
-//     swig_type_info *ty = SWIG_TypeDynamicCast($1_descriptor, (void **) &$1);
-//     ST(argvi) = sv_newmortal();
-//     SWIG_MakePtr(ST(argvi++), (void *) result, ty,0);
-// }
+%typemap(out) XERCES_CPP_NAMESPACE::Grammar * = SWIGTYPE *DYNAMIC;
+
+DYNAMIC_CAST(SWIGTYPE_p_XERCES_CPP_NAMESPACE__Grammar, Grammar_dynamic_cast);
+
+%{
+static swig_type_info *
+Grammar_dynamic_cast(void **ptr) {
+   Grammar **nptr = (Grammar **) ptr;
+   if (*nptr == NULL) {
+       return NULL;
+   }
+   short int type = (*nptr)->getGrammarType();
+   if (type == Grammar::DTDGrammarType) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__DTDGrammar;
+   }
+   if (type == Grammar::SchemaGrammarType) {
+      return SWIGTYPE_p_XERCES_CPP_NAMESPACE__SchemaGrammar;
+   }
+   return NULL;
+}
+%}
+
+//
+// PerlCallbackHandler*
+//
+
+%typemap(out) XERCES_CPP_NAMESPACE::PerlCallbackHandler * = SWIGTYPE *DYNAMIC;
+
+DYNAMIC_CAST(SWIGTYPE_p_PerlCallbackHandler, PerlCallbackHandler_dynamic_cast);
+
+%{
+static swig_type_info *
+PerlCallbackHandler_dynamic_cast(void **ptr) {
+   PerlCallbackHandler **nptr = (PerlCallbackHandler **) ptr;
+   if (*nptr == NULL) {
+       return NULL;
+   }
+   short int type = (*nptr)->type();
+   if (type == PERLCALLBACKHANDLER_BASE_TYPE) {
+      die("Can't cast a PerlCallbackHandler base type node\n");
+   }
+   if (type == PERLCALLBACKHANDLER_ERROR_TYPE) {
+      return SWIGTYPE_p_PerlErrorCallbackHandler;
+   }
+   if (type == PERLCALLBACKHANDLER_ENTITY_TYPE) {
+      return SWIGTYPE_p_PerlEntityResolverHandler;
+   }
+   if (type == PERLCALLBACKHANDLER_CONTENT_TYPE) {
+      return SWIGTYPE_p_PerlContentCallbackHandler;
+   }
+   if (type == PERLCALLBACKHANDLER_DOCUMENT_TYPE) {
+      return SWIGTYPE_p_PerlDocumentCallbackHandler;
+   }
+   if (type == PERLCALLBACKHANDLER_NODE_TYPE) {
+      return SWIGTYPE_p_PerlNodeFilterCallbackHandler;
+   }
+   return NULL;
+}
+%}
+
+//
+// DOM_Node*
+//
+
 %typemap(out) XERCES_CPP_NAMESPACE::DOMNode * = SWIGTYPE *DYNAMIC;
 
 DYNAMIC_CAST(SWIGTYPE_p_XERCES_CPP_NAMESPACE__DOMNode, DOMNode_dynamic_cast);

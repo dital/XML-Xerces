@@ -7,12 +7,12 @@
 
 XERCES_CPP_NAMESPACE_USE
 
+
 class PerlDocumentCallbackHandler : public DocumentHandler
-//				  , public  PerlCallbackHandler 
+				  , public PerlCallbackHandler 
 {
 
 protected:
-    SV *callbackObj;
 
 public:
 
@@ -20,7 +20,7 @@ public:
     PerlDocumentCallbackHandler(SV *obj);
     ~PerlDocumentCallbackHandler();
 
-    SV* set_callback_obj(SV*);
+    int type() {return PERLCALLBACKHANDLER_DOCUMENT_TYPE;}
 
 	// The DocumentHandler interface
     void startElement(const XMLCh* const name, 

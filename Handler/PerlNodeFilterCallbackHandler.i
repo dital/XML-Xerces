@@ -18,19 +18,19 @@ PerlNodeFilterCallbackHandler::PerlNodeFilterCallbackHandler(SV *obj)
     set_callback_obj(obj);
 }
 
-SV*
-PerlNodeFilterCallbackHandler::set_callback_obj(SV* object) {
-    SV *oldRef = &PL_sv_undef;	// default to 'undef'
-    if (callbackObj != NULL) {
-	oldRef = callbackObj;
-#if defined(PERL_VERSION) && PERL_VERSION >= 8
-//	SvREFCNT_dec(oldRef);
-#endif
-    }
-    SvREFCNT_inc(object);
-    callbackObj = object;
-    return oldRef;
-}
+// SV*
+// PerlNodeFilterCallbackHandler::set_callback_obj(SV* object) {
+//     SV *oldRef = &PL_sv_undef;	// default to 'undef'
+//     if (callbackObj != NULL) {
+// 	oldRef = callbackObj;
+// #if defined(PERL_VERSION) && PERL_VERSION >= 8
+// //	SvREFCNT_dec(oldRef);
+// #endif
+//     }
+//     SvREFCNT_inc(object);
+//     callbackObj = object;
+//     return oldRef;
+// }
 
 short
 PerlNodeFilterCallbackHandler::acceptNode (const DOMNode* node) const

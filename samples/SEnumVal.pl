@@ -56,115 +56,106 @@
 #
 ######################################################################
 #
-# SAXCount
+# EnumVal
 #
-# This sample is modeled after its Xerces-C counterpart.  You give it an
-# XML file and it parses it with a SAX parser and counts what it sees.
+# This sample is modeled after its XML4C counterpart.  You give it an
+# XML file and it parses it and enumerates the DTD Grammar. It shows 
+# how to access the DTD information stored in the internal data structurs
 #
 ######################################################################
 
 use strict;
-# use blib;
-use XML::Xerces;
+use XML::Xerces qw(error);
 use Getopt::Long;
-use vars qw($opt_v $opt_n);
 use Benchmark;
+use vars qw(%OPTIONS);
+
 #
 # Read and validate command line args
 #
 
 my $USAGE = <<EOU;
-USAGE: $0 [-v=xxx][-n] file
-Options:
-    -v=xxx      Validation scheme [always | never | auto*]
-    -n          Enable namespace processing. Defaults to off.
-    -s          Enable schema processing. Defaults to off.
-
-  * = Default if not provided explicitly
-
+USAGE: $0 file
 EOU
+my $VERSION = q[$Id: DOMCount.pl,v 1.13 2002/08/27 19:33:19 jasons Exp $ ];
 
-my $VERSION = q[$Id: SAXCount.pl,v 1.7 2002/08/27 19:33:20 jasons Exp $ ];
-my %OPTIONS;
 my $rc = GetOptions(\%OPTIONS,
-		    'v=s',
-		    'n',
-		    's');
+		    'help');
 
-die $USAGE unless $rc;
-
+die $USAGE if exists $OPTIONS{help};
 die $USAGE unless scalar @ARGV;
 
 my $file = $ARGV[0];
 -f $file or die "File '$file' does not exist!\n";
 
-my $namespace = $OPTIONS{n} || 0;
-my $schema = $OPTIONS{s} || 0;
-my $validate = $OPTIONS{v} || 'auto';
+my $val_to_use = XML::Xerces::SchemaValidator->new();
+my $parser = XML::Xerces::SAXParser->new($val_to_use);
+$parser->setValidationScheme ($XML::Xerces::AbstractDOMParser::Val_Auto);
+$parser->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
+$parser->setDoNamespaces(1);
+$parser->setDoSchema(1);
 
-if (uc($validate) eq 'ALWAYS') {
-  $validate = $XML::Xerces::SAXParser::Val_Always;
-} elsif (uc($validate) eq 'NEVER') {
-  $validate = $XML::Xerces::SAXParser::Val_Never;
-} elsif (uc($validate) eq 'AUTO') {
-  $validate = $XML::Xerces::SAXParser::Val_Auto;
-} else {
-  die("Unknown value for -v: $validate\n$USAGE");
-}
-
-#
-# Count the nodes
-#
-
-my $parser = XML::Xerces::SAXParser->new();
-$parser->setValidationScheme ($validate);
-$parser->setDoNamespaces ($namespace);
-$parser->setDoSchema ($schema);
-my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
-$parser->setErrorHandler($ERROR_HANDLER);
-
-package MyDocumentHandler;
-use strict;
-use vars qw(@ISA);
-@ISA = qw(XML::Xerces::PerlDocumentHandler);
-
-sub start_element {
-  my ($self,$name,$attrs) = @_;
-  $self->{elements}++;
-  $self->{attrs} += $attrs->getLength();
-}
-sub end_element {
-  my ($self,$name) = @_;
-}
-sub characters {
-  my ($self,$str,$len) = @_;
-  $self->{chars} += $len;
-}
-sub ignorable_whitespace {
-  my ($self,$str,$len) = @_;
-  $self->{ws} += $len;
-}
-
-package main;
-my $DOCUMENT_HANDLER = MyDocumentHandler->new();
-$parser->setDocumentHandler($DOCUMENT_HANDLER);
-
-$DOCUMENT_HANDLER->{elements} = 0;
-$DOCUMENT_HANDLER->{attrs} = 0;
-$DOCUMENT_HANDLER->{ws} = 0;
-$DOCUMENT_HANDLER->{chars} = 0;
 my $t0 = new Benchmark;
-eval {
-  $parser->parse (XML::Xerces::LocalFileInputSource->new($file));
-};
-XML::Xerces::error($@) if ($@);
+eval {$parser->parse ($file)};
+error($@) if $@;
 
+my $count = $parser->getErrorCount();
+if ($count == 0) {
+  my $grammar = $val_to_use->getGrammar();
+  printf STDOUT "Found Grammar: %s\n", $grammar;
+  my $iterator = $grammar->getElemEnumerator();
+  if ($iterator->hasMoreElements()) {
+    printf STDOUT "Found Elements\n";
+    while ($iterator->hasMoreElements()) {
+      my $elem = $iterator->nextElement();
+      printf STDOUT "Element Name: %s, Content Model: %s\n",
+	$elem->getFullName(),
+	$elem->getFormattedContentModel();
+      if ($elem->hasAttDefs()) {
+	my $attr_list = $elem->getAttDefList();
+	while ($attr_list->hasMoreElements()) {
+	  my $attr = $attr_list->nextElement();
+	  my $type = $attr->getType();
+	  my $type_name;
+	  if ($type == $XML::Xerces::XMLAttDef::CData) {
+	    $type_name = 'CDATA';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::ID) {
+	    $type_name = 'ID';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::Notation) {
+	    $type_name = 'NOTATION';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::Enumeration) {
+	    $type_name = 'ENUMERATION';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::Nmtoken
+		   or $type == $XML::Xerces::XMLAttDef::Nmtokens
+		  ) {
+	    $type_name = 'NMTOKEN(S)';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::IDRef
+		   or $type == $XML::Xerces::XMLAttDef::IDRefs
+		  ) {
+	    $type_name = 'IDREF(S)';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::Entity
+		   or $type == $XML::Xerces::XMLAttDef::Entities
+		  ) {
+	    $type_name = 'ENTITY(IES)';
+	  } elsif ($type == $XML::Xerces::XMLAttDef::NmToken
+		   or $type == $XML::Xerces::XMLAttDef::NmTokens
+		  ) {
+	    $type_name = 'NMTOKEN(S)';
+	  }
+	  printf STDOUT "\tattribute Name: %s, Type: %s\n",
+	    $attr->getFullName(),
+	      $type_name;
+	}
+      }
+    }
+  }
+} else {
+  print STDERR "Errors occurred, no output available\n";
+}
 my $t1 = new Benchmark;
 my $td = timediff($t1, $t0);
 
-print "$file: duration: ", timestr($td), "\n";
-print "elems: ", $DOCUMENT_HANDLER->{elements}, "\n"; 
-print "attrs: ", $DOCUMENT_HANDLER->{attrs}, "\n";
-print "whitespace: ", $DOCUMENT_HANDLER->{ws}, "\n";
-print "characters: ", $DOCUMENT_HANDLER->{chars}, "\n";
-exit(0);
+print STDOUT "$file: duration: ", timestr($td), "\n";
+
+
+__END__

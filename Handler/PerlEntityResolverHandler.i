@@ -25,19 +25,19 @@ PerlEntityResolverHandler::PerlEntityResolverHandler(SV *obj)
     set_callback_obj(obj);
 }
 
-SV*
-PerlEntityResolverHandler::set_callback_obj(SV* object) {
-    SV *oldRef = &PL_sv_undef;	// default to 'undef'
-    if (callbackObj != NULL) {
-	oldRef = callbackObj;
-#if defined(PERL_VERSION) && PERL_VERSION >= 8
-//	SvREFCNT_dec(oldRef);
-#endif
-    }
-    SvREFCNT_inc(object);
-    callbackObj = object;
-    return oldRef;
-}
+// SV*
+// PerlEntityResolverHandler::set_callback_obj(SV* object) {
+//     SV *oldRef = &PL_sv_undef;	// default to 'undef'
+//     if (callbackObj != NULL) {
+// 	oldRef = callbackObj;
+// #if defined(PERL_VERSION) && PERL_VERSION >= 8
+// //	SvREFCNT_dec(oldRef);
+// #endif
+//     }
+//     SvREFCNT_inc(object);
+//     callbackObj = object;
+//     return oldRef;
+// }
 
 InputSource *
 PerlEntityResolverHandler::resolveEntity (const XMLCh* const publicId, 
@@ -58,12 +58,18 @@ PerlEntityResolverHandler::resolveEntity (const XMLCh* const publicId,
     XPUSHs(callbackObj);
 
         // the next argument is the publicId
-    char *cptr1 = XMLString::transcode(publicId);
+
+	// this transcode has two problems 1) it will leak if not deleted
+	// and 2) why are we getting a char*, doesn't this screw up Unicode?
+    char *cptr1 = XMLString::transcode(publicId); 
     SV *string1 = sv_newmortal();
     sv_setpv(string1, (char *)cptr1);
     XPUSHs(string1);
 
         // the next argument is the systemId
+
+ 	// this transcode has two problems 1) it will leak if not deleted
+	// and 2) why are we getting a char*, doesn't this screw up Unicode?
     char *cptr2 = XMLString::transcode(systemId);
     SV *string2 = sv_newmortal();
     sv_setpv(string2, (char *)cptr2);

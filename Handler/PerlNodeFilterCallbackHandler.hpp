@@ -7,11 +7,10 @@
 XERCES_CPP_NAMESPACE_USE
 
 class PerlNodeFilterCallbackHandler : public DOMNodeFilter
-//				    , public  PerlCallbackHandler
+				    , public PerlCallbackHandler
 {
 
 protected:
-    SV *callbackObj;
 
 public:
 
@@ -19,10 +18,10 @@ public:
     PerlNodeFilterCallbackHandler(SV *obj);
     ~PerlNodeFilterCallbackHandler();
 
-    SV* set_callback_obj(SV*);
+    int type() {return PERLCALLBACKHANDLER_NODE_TYPE;}
 
 	// The NodeFilter interface
     short acceptNode (const DOMNode* node) const;
 };
 
-#endif __PERLNODEFILTERCALLBACKHANDLER
+#endif /* __PERLNODEFILTERCALLBACKHANDLER */

@@ -55,116 +55,72 @@
 # <http://www.apache.org/>.
 #
 ######################################################################
-#
-# SAXCount
-#
-# This sample is modeled after its Xerces-C counterpart.  You give it an
-# XML file and it parses it with a SAX parser and counts what it sees.
-#
-######################################################################
 
-use strict;
-# use blib;
-use XML::Xerces;
+use XML::Xerces qw(error);
 use Getopt::Long;
-use vars qw($opt_v $opt_n);
-use Benchmark;
-#
-# Read and validate command line args
-#
-
-my $USAGE = <<EOU;
-USAGE: $0 [-v=xxx][-n] file
-Options:
-    -v=xxx      Validation scheme [always | never | auto*]
-    -n          Enable namespace processing. Defaults to off.
-    -s          Enable schema processing. Defaults to off.
-
-  * = Default if not provided explicitly
-
-EOU
-
-my $VERSION = q[$Id: SAXCount.pl,v 1.7 2002/08/27 19:33:20 jasons Exp $ ];
+use Data::Dumper;
+use strict;
 my %OPTIONS;
 my $rc = GetOptions(\%OPTIONS,
-		    'v=s',
-		    'n',
-		    's');
+		    'help'
+		   );
 
-die $USAGE unless $rc;
+my $USAGE = <<"EOU";
+usage: $0 xml_file
+EOU
 
-die $USAGE unless scalar @ARGV;
+die "Bad option: $rc\n$USAGE" unless $rc;
+die $USAGE if exists $OPTIONS{help};
 
-my $file = $ARGV[0];
--f $file or die "File '$file' does not exist!\n";
+die "Must specify input files\n$USAGE" unless scalar @ARGV;
 
-my $namespace = $OPTIONS{n} || 0;
-my $schema = $OPTIONS{s} || 0;
-my $validate = $OPTIONS{v} || 'auto';
-
-if (uc($validate) eq 'ALWAYS') {
-  $validate = $XML::Xerces::SAXParser::Val_Always;
-} elsif (uc($validate) eq 'NEVER') {
-  $validate = $XML::Xerces::SAXParser::Val_Never;
-} elsif (uc($validate) eq 'AUTO') {
-  $validate = $XML::Xerces::SAXParser::Val_Auto;
-} else {
-  die("Unknown value for -v: $validate\n$USAGE");
-}
-
-#
-# Count the nodes
-#
-
-my $parser = XML::Xerces::SAXParser->new();
-$parser->setValidationScheme ($validate);
-$parser->setDoNamespaces ($namespace);
-$parser->setDoSchema ($schema);
-my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
-$parser->setErrorHandler($ERROR_HANDLER);
-
-package MyDocumentHandler;
+package MyNodeFilter;
 use strict;
 use vars qw(@ISA);
-@ISA = qw(XML::Xerces::PerlDocumentHandler);
-
-sub start_element {
-  my ($self,$name,$attrs) = @_;
-  $self->{elements}++;
-  $self->{attrs} += $attrs->getLength();
-}
-sub end_element {
-  my ($self,$name) = @_;
-}
-sub characters {
-  my ($self,$str,$len) = @_;
-  $self->{chars} += $len;
-}
-sub ignorable_whitespace {
-  my ($self,$str,$len) = @_;
-  $self->{ws} += $len;
+@ISA = qw(XML::Xerces::PerlNodeFilter);
+sub acceptNode {
+  my ($self,$node) = @_;
+  return $XML::Xerces::DOMNodeFilter::FILTER_ACCEPT;
 }
 
 package main;
-my $DOCUMENT_HANDLER = MyDocumentHandler->new();
-$parser->setDocumentHandler($DOCUMENT_HANDLER);
 
-$DOCUMENT_HANDLER->{elements} = 0;
-$DOCUMENT_HANDLER->{attrs} = 0;
-$DOCUMENT_HANDLER->{ws} = 0;
-$DOCUMENT_HANDLER->{chars} = 0;
-my $t0 = new Benchmark;
-eval {
-  $parser->parse (XML::Xerces::LocalFileInputSource->new($file));
-};
-XML::Xerces::error($@) if ($@);
+my $DOM = XML::Xerces::XercesDOMParser->new();
+my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
+$DOM->setErrorHandler($ERROR_HANDLER);
+eval{$DOM->parse($ARGV[0])};
+error($@,"Couldn't parse file: $ARGV[0]")
+  if $@;
 
-my $t1 = new Benchmark;
-my $td = timediff($t1, $t0);
+my $doc = $DOM->getDocument();
+my $root = $doc->getDocumentElement();
 
-print "$file: duration: ", timestr($td), "\n";
-print "elems: ", $DOCUMENT_HANDLER->{elements}, "\n"; 
-print "attrs: ", $DOCUMENT_HANDLER->{attrs}, "\n";
-print "whitespace: ", $DOCUMENT_HANDLER->{ws}, "\n";
-print "characters: ", $DOCUMENT_HANDLER->{chars}, "\n";
+my $hash = node2hash($root);
+print STDOUT Data::Dumper->Dump([$hash]);
 exit(0);
+
+sub node2hash {
+  my $node = shift;
+  my $return = {};
+
+  # build a hasref that represents this element
+  $return->{node_name} = $node->getNodeName();
+  if ($node->hasAttributes()) {
+    my %attrs = $node->getAttributes();
+    $return->{attributes} = \%attrs;
+  }
+
+  # insert code to handle children
+  if ($node->hasChildNodes()) {
+    my $text;
+    foreach my $child ($node->getChildNodes) {
+      push(@{$return->{children}},node2hash($child))
+	if $child->isa('XML::Xerces::DOMElement');
+      $text .= $child->getNodeValue()
+	if $child->isa('XML::Xerces::DOMText');
+    }
+    $return->{text} = $text
+      if $text !~ /^\s*$/;
+  }
+  return $return;
+}

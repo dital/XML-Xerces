@@ -64,8 +64,7 @@
 ######################################################################
 
 use strict;
-
-use blib;
+# use blib;
 use XML::Xerces;
 
 #
@@ -107,7 +106,7 @@ if ($writer->canSetFeature('format-pretty-print',1)) {
 }
 my $target = XML::Xerces::StdOutFormatTarget->new();
 $writer->writeNode($target,$doc);
-
+exit(0);
 
 #################################################################
 # routines to create the document

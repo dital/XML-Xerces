@@ -138,6 +138,4 @@ my $td = timediff($t1, $t0);
 
 print STDOUT "$file: duration: ", timestr($td), "\n";
 print STDOUT "\t($element_count elems)\n";
-
-
-__END__
+exit(0);

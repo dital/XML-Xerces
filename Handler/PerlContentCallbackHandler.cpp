@@ -19,19 +19,19 @@ PerlContentCallbackHandler::PerlContentCallbackHandler(SV *obj)
     set_callback_obj(obj);
 }
 
-SV*
-PerlContentCallbackHandler::set_callback_obj(SV* object) {
-    SV *oldRef = &PL_sv_undef;	// default to 'undef'
-    if (callbackObj != NULL) {
-	oldRef = callbackObj;
-#if defined(PERL_VERSION) && PERL_VERSION >= 8
-//	SvREFCNT_dec(oldRef);
-#endif
-    }
-    SvREFCNT_inc(object);
-    callbackObj = object;
-    return oldRef;
-}
+// SV*
+// PerlContentCallbackHandler::set_callback_obj(SV* object) {
+//     SV *oldRef = &PL_sv_undef;	// default to 'undef'
+//     if (callbackObj != NULL) {
+// 	oldRef = callbackObj;
+// #if defined(PERL_VERSION) && PERL_VERSION >= 8
+// //	SvREFCNT_dec(oldRef);
+// #endif
+//     }
+//     SvREFCNT_inc(object);
+//     callbackObj = object;
+//     return oldRef;
+// }
 
 void
 PerlContentCallbackHandler::startElement(const   XMLCh* const    uri,

@@ -1,15 +1,15 @@
 # Before `make install' is performed this script should be runnable
 # with `make test'. After `make install' it should work as `perl
-# SAXParser.t'
+# SAX2XMLReader.t'
 
 ######################### We start with some black magic to print on failure.
 
 END {ok(0) unless $loaded;}
 
 use Carp;
-use blib;
-use XML::Xerces;
-use Test::More tests => 12;
+# use blib;
+use XML::Xerces qw(error);
+use Test::More tests => 16;
 use Config;
 
 use lib 't';
@@ -38,10 +38,10 @@ my $document = q[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </person>
 </contributors>];
 
-package MyDocumentHandler;
+package MyContentHandler;
 use strict;
 use vars qw(@ISA);
-@ISA = qw(XML::Xerces::PerlDocumentHandler);
+@ISA = qw(XML::Xerces::PerlContentHandler);
 
 sub start_element {
   my $self = shift;
@@ -64,27 +64,47 @@ sub reset_document {
 }
 
 package main;
-my $SAX = XML::Xerces::SAXParser->new();
-my $DOCUMENT_HANDLER = MyDocumentHandler->new();
-my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
+my $SAX = XML::Xerces::XMLReaderFactory::createXMLReader();
+my $CONTENT_HANDLER = MyContentHandler->new();
+$SAX->setContentHandler($CONTENT_HANDLER);
+$SAX->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
+eval {
+    $SAX->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 1);
+    $SAX->setFeature("$XML::Xerces::XMLUni::fgXercesDynamic", 0);
+};
+ok((not $@),'setting validate=>yes, dynamic=>no')
+  or diag("Here's the error: $@");
 
-$SAX->setDocumentHandler($DOCUMENT_HANDLER);
-$SAX->setErrorHandler($ERROR_HANDLER);
+eval{$SAX->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'))};
+ok($@,'no dtd');
+
+$SAX = XML::Xerces::XMLReaderFactory::createXMLReader();
+$SAX->setContentHandler($CONTENT_HANDLER);
+$SAX->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
+eval {
+    $SAX->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 1);
+    $SAX->setFeature("$XML::Xerces::XMLUni::fgXercesDynamic", 1);
+};
+ok((not $@),'setting dynamic=>yes')
+  or diag("Here's the error: $@");
+
 
 # reset the counts
-$DOCUMENT_HANDLER->reset_document();
+$CONTENT_HANDLER->reset_document();
 
-$SAX->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'));
-ok($DOCUMENT_HANDLER->{elements} == 10,'elements');
-ok($DOCUMENT_HANDLER->{chars} == 141,'chars');
-ok($DOCUMENT_HANDLER->{ws} == 0,'ws');
+eval{$SAX->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'))};
+ok((not $@),'membuf parse');
+
+ok($CONTENT_HANDLER->{elements} == 10,'elements');
+ok($CONTENT_HANDLER->{chars} == 141,'chars');
+ok($CONTENT_HANDLER->{ws} == 0,'ws');
 
 # test the overloaded parse version
 $SAX->parse($PERSONAL_FILE_NAME);
-pass('successful parse');
+pass('parse filename');
 
 # reset the counts
-$DOCUMENT_HANDLER->reset_document();
+$CONTENT_HANDLER->reset_document();
 
 # test the progressive parsing interface
 my $token = XML::Xerces::XMLPScanToken->new();
@@ -92,19 +112,25 @@ $SAX->parseFirst($PERSONAL_FILE_NAME,$token);
 while ($SAX->parseNext($token)) {
   # do nothing
 }
-pass('successful progressive parse');
-ok($DOCUMENT_HANDLER->{elements} == 37, 'element count after progressive parse');
+pass('progressive parse');
+ok($CONTENT_HANDLER->{elements} == 37, 'element count after progressive parse');
 
-# reset the counts
-$DOCUMENT_HANDLER->reset_document();
 
+# reset the counts, and parser for new parse
+$CONTENT_HANDLER->reset_document();
+$SAX->parseReset($token);
+
+# test the progressive parsing interface
 $token = XML::Xerces::XMLPScanToken->new();
 $SAX->parseFirst($PERSONAL_FILE_NAME,$token);
 while ($SAX->parseNext($token)) {
-  last if $DOCUMENT_HANDLER->{elements} == 10;
+  last if $CONTENT_HANDLER->{elements} == 10;
 }
 pass('early exit from progressive parse');
-ok($DOCUMENT_HANDLER->{elements} == 10, 'element count after early exit from progressive parse');
+ok($CONTENT_HANDLER->{elements} == 10, 'element count after early exit from progressive parse');
+
+# reset the parser for new parse
+$SAX->parseReset($token);
 
 # test that we can reuse the parse again and again
 $document = <<\END;

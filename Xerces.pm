@@ -26,21 +26,29 @@ END {
 
 package XML::Xerces;
 use Carp;
-use vars qw(@EXPORT_OK);
+use vars qw(@EXPORT_OK $VERSION);
 @EXPORT_OK = qw(error);
+$VERSION = q[2.3.0-4];
+
 sub error {
   my $error = shift;
-  print STDERR "Error in eval: ";
+  my $context = shift;
+  my $msg = "Error in eval: ";
   if (ref $error) {
     if ($error->isa('XML::Xerces::DOMException')) {
-      croak "Message: <", $error->getMessage(), 
-	"> Code: ", $XML::Xerces::DOMException::CODES[$error->getCode];
+      $msg .= "Message: <"
+        . $error->getMessage()
+	. "> Code: "
+        . $XML::Xerces::DOMException::CODES[$error->getCode];
     } else {
-      croak $error->getMessage();
+      $msg .= $error->getMessage();
     }
   } else {
-    croak $error;
+    $msg .= $error;
   }
+  $msg .= ", Context: $context"
+    if defined $context;
+  croak($msg);
 }
 
 package XML::Xerces::DOMException;
@@ -189,6 +197,38 @@ EOT
 
 sub reset_errors {}
 
+package XML::Xerces::XMLAttDefList;
+#
+# This class is both a list and a hash, so at the moment we
+# enable users to choose how to access the information. Perhaps
+# in the future we will use an order preserving hash like Tie::IxHash.
+#
+
+# convert the AttDefList to a perl list
+sub to_list {
+  my $self = shift;
+  my @list;
+  if ($self->hasMoreElements()) {
+    while ($self->hasMoreElements()) {
+      push(@list,$self->nextElement());
+    }
+  }
+  return @list;
+}
+
+# convert the AttDefList to a perl hash
+sub to_hash {
+  my $self = shift;
+  my %hash;
+  if ($self->hasMoreElements()) {
+    while ($self->hasMoreElements()) {
+      my $attr = $self->nextElement();
+      $hash{$attr->getFullName()} = $attr;
+    }
+  }
+  return %hash;
+}
+
 package XML::Xerces::DOMNodeList;
 # convert the NodeList to a perl list
 sub to_list {
@@ -296,6 +336,7 @@ sub serialize {
 package XML::Xerces::DOMElement;
 sub serialize {
   my ($self,$indent) = @_;
+  $indent ||= 0;
   my $output;
   ELEMENT: {
     my $node_name = $self->getNodeName;
@@ -394,20 +435,89 @@ sub getCode {
   return shift->{code};
 }
 
+# in previous versions we needed to define this method
+# but it is now obsolete
 package XML::Xerces::DOMElement;
 sub get_text {
-  my $node = shift;
-  my @nodes = $node->getChildNodes();
-  my $text;
-  foreach (@nodes) {
-    $text .= $_->getNodeValue()
-      if $_->isa('XML::Xerces::DOMText');
-  }
-  return $text;
+  my $self = shift;
+  warn "XML::Xerces::DOMElement::get_text is depricated, use getTextContent instead";
+  return $self->getTextContent(@_);
 }
+
+package XML::Xerces::XMLCatalogResolver;
+use XML::Xerces qw(error);
+use strict;
+use Carp;
+use vars qw($VERSION
+	    @ISA
+	    @EXPORT
+	    @EXPORT_OK
+	    $CATALOG
+	    %MAPS
+	    %REMAPS
+	   );
+require Exporter;
+
+@ISA = qw(Exporter XML::Xerces::PerlEntityResolver);
+@EXPORT_OK = qw();
+
+sub new {
+  my $pkg = shift;
+  my $catalog = shift;
+  my $self = bless {}, $pkg;
+  $self->initialize($catalog);
+  return $self;
+}
+
+sub initialize {
+  my $self = shift;
+
+  # allow callers to set the global variable
+  $CATALOG = shift
+    unless $CATALOG;
+
+  my $DOM = XML::Xerces::XercesDOMParser->new();
+  my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
+  $DOM->setErrorHandler($ERROR_HANDLER);
+
+  # we parse the example XML Catalog
+  eval{$DOM->parse($CATALOG)};
+  error ($@, __PACKAGE__ . ": Couldn't parse catalog: $CATALOG")
+      if $@;
+
+  # now retrieve the mappings
+  my $doc = $DOM->getDocument();
+  my @Maps = $doc->getElementsByTagName('Map');
+  %MAPS = map {($_->getAttribute('PublicId'),
+		   $_->getAttribute('HRef'))} @Maps;
+  my @Remaps = $doc->getElementsByTagName('Remap');
+  %REMAPS = map {($_->getAttribute('SystemId'),
+		     $_->getAttribute('HRef'))} @Remaps;
+}
+
+sub resolve_entity {
+  my ($self,$pub,$sys) = @_;
+#   print STDERR "Got PUBLIC: $pub\n";
+#   print STDERR "Got SYSTEM: $sys\n";
+
+  # now check which one we were asked for
+  my $href;
+  if ($pub) {
+    $href = $MAPS{$pub};
+  } elsif ($sys) {
+    $href = $REMAPS{$sys};
+  } else {
+    croak("Neither PublicId or SystemId were defined");
+  }
+
+  my $is = eval {XML::Xerces::LocalFileInputSource->new($href)};
+  error($@,"Couldn't create input source for $href")
+      if $@;
+  return $is;
+}
+
 package XML::Xerces; 
 use vars qw($VERSION @EXPORT);
-$VERSION = q[2.3.0-1];
 package XML::Xerces;
 @EXPORT = qw( );
 
@@ -425,6 +535,18 @@ sub CLEAR { }
 sub FIRSTKEY { }
 
 sub NEXTKEY { }
+
+sub FETCH {
+    my ($self,$field) = @_;
+    my $member_func = "swig_${field}_get";
+    $self->$member_func();
+}
+
+sub STORE {
+    my ($self,$field,$newval) = @_;
+    my $member_func = "swig_${field}_set";
+    $self->$member_func($newval);
+}
 
 sub this {
     my $ptr = shift;
@@ -444,13 +566,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLPlatformUtils ##############
@@ -494,13 +616,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *alignPointerForNewBlockAllocation = *XML::Xercesc::XMLPlatformUtils_alignPointerForNewBlockAllocation;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLPlatformUtils(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLPlatformUtils", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLPlatformUtils(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -508,13 +625,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLURL ##############
@@ -537,24 +654,12 @@ use overload
 *lookupByName = *XML::Xercesc::XMLURL_lookupByName;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLURL(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLURL", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLURL(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-sub operator_assignment {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLURL_operator_assignment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*operator_assignment = *XML::Xercesc::XMLURL_operator_assignment;
 *operator_equal_to = *XML::Xercesc::XMLURL_operator_equal_to;
 *operator_not_equal_to = *XML::Xercesc::XMLURL_operator_not_equal_to;
 *getFragment = *XML::Xercesc::XMLURL_getFragment;
@@ -577,13 +682,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLUri ##############
@@ -598,23 +703,11 @@ use overload
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLUri(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLUri", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLUri(@_);
+    bless $self, $pkg if defined($self);
 }
 
-sub operator_assignment {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLUri_operator_assignment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*operator_assignment = *XML::Xercesc::XMLUri_operator_assignment;
 
 *getUriText = *XML::Xercesc::XMLUri_getUriText;
 *getScheme = *XML::Xercesc::XMLUri_getScheme;
@@ -636,13 +729,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::QName ##############
@@ -657,13 +750,8 @@ use overload
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_QName(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::QName", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_QName(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -684,13 +772,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::HexBin ##############
@@ -707,13 +795,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::Base64 ##############
@@ -731,13 +819,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLExcepts ##############
@@ -1122,13 +1210,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *E_HighBounds = *XML::Xercesc::XMLExcepts_E_HighBounds;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLExcepts(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLExcepts", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLExcepts(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1136,13 +1219,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLException ##############
@@ -1163,27 +1246,267 @@ use overload
 *getSrcLine = *XML::Xercesc::XMLException_getSrcLine;
 *getErrorType = *XML::Xercesc::XMLException_getErrorType;
 *setPosition = *XML::Xercesc::XMLException_setPosition;
-sub operator_assignment {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLException_operator_assignment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*operator_assignment = *XML::Xercesc::XMLException_operator_assignment;
 *reinitMsgMutex = *XML::Xercesc::XMLException_reinitMsgMutex;
 *reinitMsgLoader = *XML::Xercesc::XMLException_reinitMsgLoader;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
+
+
+############# Class : XML::Xerces::XMLElementDecl ##############
+
+package XML::Xerces::XMLElementDecl;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+*NoReason = *XML::Xercesc::XMLElementDecl_NoReason;
+*Declared = *XML::Xercesc::XMLElementDecl_Declared;
+*AttList = *XML::Xercesc::XMLElementDecl_AttList;
+*InContentModel = *XML::Xercesc::XMLElementDecl_InContentModel;
+*AsRootElem = *XML::Xercesc::XMLElementDecl_AsRootElem;
+*JustFaultIn = *XML::Xercesc::XMLElementDecl_JustFaultIn;
+*AddIfNotFound = *XML::Xercesc::XMLElementDecl_AddIfNotFound;
+*FailIfNotFound = *XML::Xercesc::XMLElementDecl_FailIfNotFound;
+*NoCharData = *XML::Xercesc::XMLElementDecl_NoCharData;
+*SpacesOk = *XML::Xercesc::XMLElementDecl_SpacesOk;
+*AllCharData = *XML::Xercesc::XMLElementDecl_AllCharData;
+*fgInvalidElemId = *XML::Xercesc::XMLElementDecl_fgInvalidElemId;
+*fgPCDataElemId = *XML::Xercesc::XMLElementDecl_fgPCDataElemId;
+*fgPCDataElemName = *XML::Xercesc::XMLElementDecl_fgPCDataElemName;
+
+*findAttr = *XML::Xercesc::XMLElementDecl_findAttr;
+*getAttDefList = *XML::Xercesc::XMLElementDecl_getAttDefList;
+*getCharDataOpts = *XML::Xercesc::XMLElementDecl_getCharDataOpts;
+*hasAttDefs = *XML::Xercesc::XMLElementDecl_hasAttDefs;
+*resetDefs = *XML::Xercesc::XMLElementDecl_resetDefs;
+*getContentSpec = *XML::Xercesc::XMLElementDecl_getContentSpec;
+*setContentSpec = *XML::Xercesc::XMLElementDecl_setContentSpec;
+*getContentModel = *XML::Xercesc::XMLElementDecl_getContentModel;
+*setContentModel = *XML::Xercesc::XMLElementDecl_setContentModel;
+*getFormattedContentModel = *XML::Xercesc::XMLElementDecl_getFormattedContentModel;
+*getBaseName = *XML::Xercesc::XMLElementDecl_getBaseName;
+*getURI = *XML::Xercesc::XMLElementDecl_getURI;
+*getElementName = *XML::Xercesc::XMLElementDecl_getElementName;
+*getFullName = *XML::Xercesc::XMLElementDecl_getFullName;
+*getCreateReason = *XML::Xercesc::XMLElementDecl_getCreateReason;
+*getId = *XML::Xercesc::XMLElementDecl_getId;
+*getDOMTypeInfoUri = *XML::Xercesc::XMLElementDecl_getDOMTypeInfoUri;
+*getDOMTypeInfoName = *XML::Xercesc::XMLElementDecl_getDOMTypeInfoName;
+*isDeclared = *XML::Xercesc::XMLElementDecl_isDeclared;
+*isExternal = *XML::Xercesc::XMLElementDecl_isExternal;
+*getMemoryManager = *XML::Xercesc::XMLElementDecl_getMemoryManager;
+*setElementName = *XML::Xercesc::XMLElementDecl_setElementName;
+*setCreateReason = *XML::Xercesc::XMLElementDecl_setCreateReason;
+*setId = *XML::Xercesc::XMLElementDecl_setId;
+*setExternalElemDeclaration = *XML::Xercesc::XMLElementDecl_setExternalElemDeclaration;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::XMLEntityDecl ##############
+
+package XML::Xerces::XMLEntityDecl;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+
+*getDeclaredInIntSubset = *XML::Xercesc::XMLEntityDecl_getDeclaredInIntSubset;
+*getIsParameter = *XML::Xercesc::XMLEntityDecl_getIsParameter;
+*getIsSpecialChar = *XML::Xercesc::XMLEntityDecl_getIsSpecialChar;
+*getId = *XML::Xercesc::XMLEntityDecl_getId;
+*getName = *XML::Xercesc::XMLEntityDecl_getName;
+*getNotationName = *XML::Xercesc::XMLEntityDecl_getNotationName;
+*getPublicId = *XML::Xercesc::XMLEntityDecl_getPublicId;
+*getSystemId = *XML::Xercesc::XMLEntityDecl_getSystemId;
+*getBaseURI = *XML::Xercesc::XMLEntityDecl_getBaseURI;
+*getValue = *XML::Xercesc::XMLEntityDecl_getValue;
+*getValueLen = *XML::Xercesc::XMLEntityDecl_getValueLen;
+*isExternal = *XML::Xercesc::XMLEntityDecl_isExternal;
+*isUnparsed = *XML::Xercesc::XMLEntityDecl_isUnparsed;
+*getMemoryManager = *XML::Xercesc::XMLEntityDecl_getMemoryManager;
+*setName = *XML::Xercesc::XMLEntityDecl_setName;
+*setNotationName = *XML::Xercesc::XMLEntityDecl_setNotationName;
+*setPublicId = *XML::Xercesc::XMLEntityDecl_setPublicId;
+*setSystemId = *XML::Xercesc::XMLEntityDecl_setSystemId;
+*setBaseURI = *XML::Xercesc::XMLEntityDecl_setBaseURI;
+*setValue = *XML::Xercesc::XMLEntityDecl_setValue;
+*setId = *XML::Xercesc::XMLEntityDecl_setId;
+*getKey = *XML::Xercesc::XMLEntityDecl_getKey;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::XMLNotationDecl ##############
+
+package XML::Xerces::XMLNotationDecl;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_XMLNotationDecl(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*getId = *XML::Xercesc::XMLNotationDecl_getId;
+*getName = *XML::Xercesc::XMLNotationDecl_getName;
+*getPublicId = *XML::Xercesc::XMLNotationDecl_getPublicId;
+*getSystemId = *XML::Xercesc::XMLNotationDecl_getSystemId;
+*getBaseURI = *XML::Xercesc::XMLNotationDecl_getBaseURI;
+*getMemoryManager = *XML::Xercesc::XMLNotationDecl_getMemoryManager;
+*setId = *XML::Xercesc::XMLNotationDecl_setId;
+*setName = *XML::Xercesc::XMLNotationDecl_setName;
+*setPublicId = *XML::Xercesc::XMLNotationDecl_setPublicId;
+*setSystemId = *XML::Xercesc::XMLNotationDecl_setSystemId;
+*setBaseURI = *XML::Xercesc::XMLNotationDecl_setBaseURI;
+*getKey = *XML::Xercesc::XMLNotationDecl_getKey;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::XMLAttDefList ##############
+
+package XML::Xerces::XMLAttDefList;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+
+*hasMoreElements = *XML::Xercesc::XMLAttDefList_hasMoreElements;
+*isEmpty = *XML::Xercesc::XMLAttDefList_isEmpty;
+*ignore_me_for_now = *XML::Xercesc::XMLAttDefList_ignore_me_for_now;
+*findAttDef = *XML::Xercesc::XMLAttDefList_findAttDef;
+*nextElement = *XML::Xercesc::XMLAttDefList_nextElement;
+*Reset = *XML::Xercesc::XMLAttDefList_Reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::XMLAttDef ##############
+
+package XML::Xerces::XMLAttDef;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+*CData = *XML::Xercesc::XMLAttDef_CData;
+*ID = *XML::Xercesc::XMLAttDef_ID;
+*IDRef = *XML::Xercesc::XMLAttDef_IDRef;
+*IDRefs = *XML::Xercesc::XMLAttDef_IDRefs;
+*Entity = *XML::Xercesc::XMLAttDef_Entity;
+*Entities = *XML::Xercesc::XMLAttDef_Entities;
+*NmToken = *XML::Xercesc::XMLAttDef_NmToken;
+*NmTokens = *XML::Xercesc::XMLAttDef_NmTokens;
+*Notation = *XML::Xercesc::XMLAttDef_Notation;
+*Enumeration = *XML::Xercesc::XMLAttDef_Enumeration;
+*Simple = *XML::Xercesc::XMLAttDef_Simple;
+*Any_Any = *XML::Xercesc::XMLAttDef_Any_Any;
+*Any_Other = *XML::Xercesc::XMLAttDef_Any_Other;
+*Any_List = *XML::Xercesc::XMLAttDef_Any_List;
+*AttTypes_Count = *XML::Xercesc::XMLAttDef_AttTypes_Count;
+*AttTypes_Min = *XML::Xercesc::XMLAttDef_AttTypes_Min;
+*AttTypes_Max = *XML::Xercesc::XMLAttDef_AttTypes_Max;
+*AttTypes_Unknown = *XML::Xercesc::XMLAttDef_AttTypes_Unknown;
+*Default = *XML::Xercesc::XMLAttDef_Default;
+*Fixed = *XML::Xercesc::XMLAttDef_Fixed;
+*Required = *XML::Xercesc::XMLAttDef_Required;
+*Required_And_Fixed = *XML::Xercesc::XMLAttDef_Required_And_Fixed;
+*Implied = *XML::Xercesc::XMLAttDef_Implied;
+*ProcessContents_Skip = *XML::Xercesc::XMLAttDef_ProcessContents_Skip;
+*ProcessContents_Lax = *XML::Xercesc::XMLAttDef_ProcessContents_Lax;
+*ProcessContents_Strict = *XML::Xercesc::XMLAttDef_ProcessContents_Strict;
+*Prohibited = *XML::Xercesc::XMLAttDef_Prohibited;
+*DefAttTypes_Count = *XML::Xercesc::XMLAttDef_DefAttTypes_Count;
+*DefAttTypes_Min = *XML::Xercesc::XMLAttDef_DefAttTypes_Min;
+*DefAttTypes_Max = *XML::Xercesc::XMLAttDef_DefAttTypes_Max;
+*DefAttTypes_Unknown = *XML::Xercesc::XMLAttDef_DefAttTypes_Unknown;
+*NoReason = *XML::Xercesc::XMLAttDef_NoReason;
+*JustFaultIn = *XML::Xercesc::XMLAttDef_JustFaultIn;
+*fgInvalidAttrId = *XML::Xercesc::XMLAttDef_fgInvalidAttrId;
+*getAttTypeString = *XML::Xercesc::XMLAttDef_getAttTypeString;
+*getDefAttTypeString = *XML::Xercesc::XMLAttDef_getDefAttTypeString;
+
+*getFullName = *XML::Xercesc::XMLAttDef_getFullName;
+*reset = *XML::Xercesc::XMLAttDef_reset;
+*getDefaultType = *XML::Xercesc::XMLAttDef_getDefaultType;
+*getEnumeration = *XML::Xercesc::XMLAttDef_getEnumeration;
+*getId = *XML::Xercesc::XMLAttDef_getId;
+*getProvided = *XML::Xercesc::XMLAttDef_getProvided;
+*getType = *XML::Xercesc::XMLAttDef_getType;
+*getValue = *XML::Xercesc::XMLAttDef_getValue;
+*getCreateReason = *XML::Xercesc::XMLAttDef_getCreateReason;
+*isExternal = *XML::Xercesc::XMLAttDef_isExternal;
+*getMemoryManager = *XML::Xercesc::XMLAttDef_getMemoryManager;
+*getDOMTypeInfoUri = *XML::Xercesc::XMLAttDef_getDOMTypeInfoUri;
+*getDOMTypeInfoName = *XML::Xercesc::XMLAttDef_getDOMTypeInfoName;
+*setDefaultType = *XML::Xercesc::XMLAttDef_setDefaultType;
+*setId = *XML::Xercesc::XMLAttDef_setId;
+*setProvided = *XML::Xercesc::XMLAttDef_setProvided;
+*setType = *XML::Xercesc::XMLAttDef_setType;
+*setValue = *XML::Xercesc::XMLAttDef_setValue;
+*setEnumeration = *XML::Xercesc::XMLAttDef_setEnumeration;
+*setCreateReason = *XML::Xercesc::XMLAttDef_setCreateReason;
+*setExternalAttDeclaration = *XML::Xercesc::XMLAttDef_setExternalAttDeclaration;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
 
 
 ############# Class : XML::Xerces::XMLValidator ##############
@@ -1202,14 +1525,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *requiresNamespaces = *XML::Xercesc::XMLValidator_requiresNamespaces;
 *validateAttrValue = *XML::Xercesc::XMLValidator_validateAttrValue;
 *validateElement = *XML::Xercesc::XMLValidator_validateElement;
-sub getGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLValidator_getGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getGrammar = *XML::Xercesc::XMLValidator_getGrammar;
 *setGrammar = *XML::Xercesc::XMLValidator_setGrammar;
 *handlesDTD = *XML::Xercesc::XMLValidator_handlesDTD;
 *handlesSchema = *XML::Xercesc::XMLValidator_handlesSchema;
@@ -1223,13 +1539,658 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
+
+
+############# Class : XML::Xerces::Grammar ##############
+
+package XML::Xerces::Grammar;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+*DTDGrammarType = *XML::Xercesc::Grammar_DTDGrammarType;
+*SchemaGrammarType = *XML::Xercesc::Grammar_SchemaGrammarType;
+*UNKNOWN_SCOPE = *XML::Xercesc::Grammar_UNKNOWN_SCOPE;
+*TOP_LEVEL_SCOPE = *XML::Xercesc::Grammar_TOP_LEVEL_SCOPE;
+
+*getGrammarType = *XML::Xercesc::Grammar_getGrammarType;
+*getTargetNamespace = *XML::Xercesc::Grammar_getTargetNamespace;
+*getValidated = *XML::Xercesc::Grammar_getValidated;
+*findOrAddElemDecl = *XML::Xercesc::Grammar_findOrAddElemDecl;
+*getElemId = *XML::Xercesc::Grammar_getElemId;
+*getElemDecl = *XML::Xercesc::Grammar_getElemDecl;
+*getNotationDecl = *XML::Xercesc::Grammar_getNotationDecl;
+*putElemDecl = *XML::Xercesc::Grammar_putElemDecl;
+*putNotationDecl = *XML::Xercesc::Grammar_putNotationDecl;
+*setValidated = *XML::Xercesc::Grammar_setValidated;
+*reset = *XML::Xercesc::Grammar_reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDElementDecl ##############
+
+package XML::Xerces::DTDElementDecl;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLElementDecl );
+%OWNER = ();
+%ITERATORS = ();
+*Empty = *XML::Xercesc::DTDElementDecl_Empty;
+*Any = *XML::Xercesc::DTDElementDecl_Any;
+*Mixed_Simple = *XML::Xercesc::DTDElementDecl_Mixed_Simple;
+*Children = *XML::Xercesc::DTDElementDecl_Children;
+*ModelTypes_Count = *XML::Xercesc::DTDElementDecl_ModelTypes_Count;
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDElementDecl(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*findAttr = *XML::Xercesc::DTDElementDecl_findAttr;
+*getAttDefList = *XML::Xercesc::DTDElementDecl_getAttDefList;
+*getCharDataOpts = *XML::Xercesc::DTDElementDecl_getCharDataOpts;
+*hasAttDefs = *XML::Xercesc::DTDElementDecl_hasAttDefs;
+*resetDefs = *XML::Xercesc::DTDElementDecl_resetDefs;
+*getContentSpec = *XML::Xercesc::DTDElementDecl_getContentSpec;
+*setContentSpec = *XML::Xercesc::DTDElementDecl_setContentSpec;
+*getContentModel = *XML::Xercesc::DTDElementDecl_getContentModel;
+*setContentModel = *XML::Xercesc::DTDElementDecl_setContentModel;
+*getFormattedContentModel = *XML::Xercesc::DTDElementDecl_getFormattedContentModel;
+*getKey = *XML::Xercesc::DTDElementDecl_getKey;
+*getAttDef = *XML::Xercesc::DTDElementDecl_getAttDef;
+*getModelType = *XML::Xercesc::DTDElementDecl_getModelType;
+*getDOMTypeInfoName = *XML::Xercesc::DTDElementDecl_getDOMTypeInfoName;
+*getDOMTypeInfoUri = *XML::Xercesc::DTDElementDecl_getDOMTypeInfoUri;
+*addAttDef = *XML::Xercesc::DTDElementDecl_addAttDef;
+*setModelType = *XML::Xercesc::DTDElementDecl_setModelType;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDElementDeclEnumerator ##############
+
+package XML::Xerces::DTDElementDeclEnumerator;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+use overload
+    "=" => sub { $_[0]->operator_assignment($_[1])},
+    "fallback" => 1;
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDElementDeclEnumerator(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*operator_assignment = *XML::Xercesc::DTDElementDeclEnumerator_operator_assignment;
+*hasMoreElements = *XML::Xercesc::DTDElementDeclEnumerator_hasMoreElements;
+*nextElement = *XML::Xercesc::DTDElementDeclEnumerator_nextElement;
+*Reset = *XML::Xercesc::DTDElementDeclEnumerator_Reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDEntityDecl ##############
+
+package XML::Xerces::DTDEntityDecl;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLEntityDecl );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDEntityDecl(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*getDeclaredInIntSubset = *XML::Xercesc::DTDEntityDecl_getDeclaredInIntSubset;
+*getIsParameter = *XML::Xercesc::DTDEntityDecl_getIsParameter;
+*getIsSpecialChar = *XML::Xercesc::DTDEntityDecl_getIsSpecialChar;
+*setDeclaredInIntSubset = *XML::Xercesc::DTDEntityDecl_setDeclaredInIntSubset;
+*setIsParameter = *XML::Xercesc::DTDEntityDecl_setIsParameter;
+*setIsSpecialChar = *XML::Xercesc::DTDEntityDecl_setIsSpecialChar;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDEntityDeclEnumerator ##############
+
+package XML::Xerces::DTDEntityDeclEnumerator;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+use overload
+    "=" => sub { $_[0]->operator_assignment($_[1])},
+    "fallback" => 1;
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDEntityDeclEnumerator(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*operator_assignment = *XML::Xercesc::DTDEntityDeclEnumerator_operator_assignment;
+*hasMoreElements = *XML::Xercesc::DTDEntityDeclEnumerator_hasMoreElements;
+*nextElement = *XML::Xercesc::DTDEntityDeclEnumerator_nextElement;
+*Reset = *XML::Xercesc::DTDEntityDeclEnumerator_Reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDAttDefList ##############
+
+package XML::Xerces::DTDAttDefList;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLAttDefList );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDAttDefList(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*hasMoreElements = *XML::Xercesc::DTDAttDefList_hasMoreElements;
+*isEmpty = *XML::Xercesc::DTDAttDefList_isEmpty;
+*ignore_me_for_now = *XML::Xercesc::DTDAttDefList_ignore_me_for_now;
+*findAttDef = *XML::Xercesc::DTDAttDefList_findAttDef;
+*nextElement = *XML::Xercesc::DTDAttDefList_nextElement;
+*Reset = *XML::Xercesc::DTDAttDefList_Reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDAttDef ##############
+
+package XML::Xerces::DTDAttDef;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLAttDef );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDAttDef(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*getFullName = *XML::Xercesc::DTDAttDef_getFullName;
+*reset = *XML::Xercesc::DTDAttDef_reset;
+*getElemId = *XML::Xercesc::DTDAttDef_getElemId;
+*getDOMTypeInfoName = *XML::Xercesc::DTDAttDef_getDOMTypeInfoName;
+*getDOMTypeInfoUri = *XML::Xercesc::DTDAttDef_getDOMTypeInfoUri;
+*setElemId = *XML::Xercesc::DTDAttDef_setElemId;
+*setName = *XML::Xercesc::DTDAttDef_setName;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDGrammar ##############
+
+package XML::Xerces::DTDGrammar;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::Grammar );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDGrammar(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*getGrammarType = *XML::Xercesc::DTDGrammar_getGrammarType;
+*getTargetNamespace = *XML::Xercesc::DTDGrammar_getTargetNamespace;
+*findOrAddElemDecl = *XML::Xercesc::DTDGrammar_findOrAddElemDecl;
+*getElemId = *XML::Xercesc::DTDGrammar_getElemId;
+*getElemDecl = *XML::Xercesc::DTDGrammar_getElemDecl;
+*getNotationDecl = *XML::Xercesc::DTDGrammar_getNotationDecl;
+*getValidated = *XML::Xercesc::DTDGrammar_getValidated;
+*putElemDecl = *XML::Xercesc::DTDGrammar_putElemDecl;
+*putNotationDecl = *XML::Xercesc::DTDGrammar_putNotationDecl;
+*setValidated = *XML::Xercesc::DTDGrammar_setValidated;
+*reset = *XML::Xercesc::DTDGrammar_reset;
+*getRootElemId = *XML::Xercesc::DTDGrammar_getRootElemId;
+*getEntityDecl = *XML::Xercesc::DTDGrammar_getEntityDecl;
+*getEntityDeclPool = *XML::Xercesc::DTDGrammar_getEntityDeclPool;
+*getElemEnumerator = *XML::Xercesc::DTDGrammar_getElemEnumerator;
+*getEntityEnumerator = *XML::Xercesc::DTDGrammar_getEntityEnumerator;
+*getNotationEnumerator = *XML::Xercesc::DTDGrammar_getNotationEnumerator;
+*setRootElemId = *XML::Xercesc::DTDGrammar_setRootElemId;
+*putEntityDecl = *XML::Xercesc::DTDGrammar_putEntityDecl;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::DTDValidator ##############
+
+package XML::Xerces::DTDValidator;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLValidator );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_DTDValidator(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*checkContent = *XML::Xercesc::DTDValidator_checkContent;
+*faultInAttr = *XML::Xercesc::DTDValidator_faultInAttr;
+*preContentValidation = *XML::Xercesc::DTDValidator_preContentValidation;
+*postParseValidation = *XML::Xercesc::DTDValidator_postParseValidation;
+*reset = *XML::Xercesc::DTDValidator_reset;
+*requiresNamespaces = *XML::Xercesc::DTDValidator_requiresNamespaces;
+*validateAttrValue = *XML::Xercesc::DTDValidator_validateAttrValue;
+*validateElement = *XML::Xercesc::DTDValidator_validateElement;
+*getGrammar = *XML::Xercesc::DTDValidator_getGrammar;
+*setGrammar = *XML::Xercesc::DTDValidator_setGrammar;
+*handlesDTD = *XML::Xercesc::DTDValidator_handlesDTD;
+*handlesSchema = *XML::Xercesc::DTDValidator_handlesSchema;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::SchemaElementDecl ##############
+
+package XML::Xerces::SchemaElementDecl;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLElementDecl );
+%OWNER = ();
+%ITERATORS = ();
+*Empty = *XML::Xercesc::SchemaElementDecl_Empty;
+*Any = *XML::Xercesc::SchemaElementDecl_Any;
+*Mixed_Simple = *XML::Xercesc::SchemaElementDecl_Mixed_Simple;
+*Mixed_Complex = *XML::Xercesc::SchemaElementDecl_Mixed_Complex;
+*Children = *XML::Xercesc::SchemaElementDecl_Children;
+*Simple = *XML::Xercesc::SchemaElementDecl_Simple;
+*ModelTypes_Count = *XML::Xercesc::SchemaElementDecl_ModelTypes_Count;
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaElementDecl(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*findAttr = *XML::Xercesc::SchemaElementDecl_findAttr;
+*getAttDefList = *XML::Xercesc::SchemaElementDecl_getAttDefList;
+*getCharDataOpts = *XML::Xercesc::SchemaElementDecl_getCharDataOpts;
+*hasAttDefs = *XML::Xercesc::SchemaElementDecl_hasAttDefs;
+*resetDefs = *XML::Xercesc::SchemaElementDecl_resetDefs;
+*getContentSpec = *XML::Xercesc::SchemaElementDecl_getContentSpec;
+*setContentSpec = *XML::Xercesc::SchemaElementDecl_setContentSpec;
+*getContentModel = *XML::Xercesc::SchemaElementDecl_getContentModel;
+*setContentModel = *XML::Xercesc::SchemaElementDecl_setContentModel;
+*getFormattedContentModel = *XML::Xercesc::SchemaElementDecl_getFormattedContentModel;
+*getAttDef = *XML::Xercesc::SchemaElementDecl_getAttDef;
+*getAttWildCard = *XML::Xercesc::SchemaElementDecl_getAttWildCard;
+*getModelType = *XML::Xercesc::SchemaElementDecl_getModelType;
+*getDatatypeValidator = *XML::Xercesc::SchemaElementDecl_getDatatypeValidator;
+*getEnclosingScope = *XML::Xercesc::SchemaElementDecl_getEnclosingScope;
+*getFinalSet = *XML::Xercesc::SchemaElementDecl_getFinalSet;
+*getBlockSet = *XML::Xercesc::SchemaElementDecl_getBlockSet;
+*getMiscFlags = *XML::Xercesc::SchemaElementDecl_getMiscFlags;
+*getDefaultValue = *XML::Xercesc::SchemaElementDecl_getDefaultValue;
+*getComplexTypeInfo = *XML::Xercesc::SchemaElementDecl_getComplexTypeInfo;
+*isGlobalDecl = *XML::Xercesc::SchemaElementDecl_isGlobalDecl;
+*getSubstitutionGroupElem = *XML::Xercesc::SchemaElementDecl_getSubstitutionGroupElem;
+*getValidity = *XML::Xercesc::SchemaElementDecl_getValidity;
+*getValidationAttempted = *XML::Xercesc::SchemaElementDecl_getValidationAttempted;
+*getTypeType = *XML::Xercesc::SchemaElementDecl_getTypeType;
+*getTypeUri = *XML::Xercesc::SchemaElementDecl_getTypeUri;
+*getTypeName = *XML::Xercesc::SchemaElementDecl_getTypeName;
+*getTypeAnonymous = *XML::Xercesc::SchemaElementDecl_getTypeAnonymous;
+*isTypeDefinitionUnion = *XML::Xercesc::SchemaElementDecl_isTypeDefinitionUnion;
+*getMemberTypeUri = *XML::Xercesc::SchemaElementDecl_getMemberTypeUri;
+*getMemberTypeAnonymous = *XML::Xercesc::SchemaElementDecl_getMemberTypeAnonymous;
+*getMemberTypeName = *XML::Xercesc::SchemaElementDecl_getMemberTypeName;
+*getDOMTypeInfoUri = *XML::Xercesc::SchemaElementDecl_getDOMTypeInfoUri;
+*getDOMTypeInfoName = *XML::Xercesc::SchemaElementDecl_getDOMTypeInfoName;
+*setModelType = *XML::Xercesc::SchemaElementDecl_setModelType;
+*setDatatypeValidator = *XML::Xercesc::SchemaElementDecl_setDatatypeValidator;
+*setEnclosingScope = *XML::Xercesc::SchemaElementDecl_setEnclosingScope;
+*setFinalSet = *XML::Xercesc::SchemaElementDecl_setFinalSet;
+*setBlockSet = *XML::Xercesc::SchemaElementDecl_setBlockSet;
+*setMiscFlags = *XML::Xercesc::SchemaElementDecl_setMiscFlags;
+*setDefaultValue = *XML::Xercesc::SchemaElementDecl_setDefaultValue;
+*setComplexTypeInfo = *XML::Xercesc::SchemaElementDecl_setComplexTypeInfo;
+*setXsiComplexTypeInfo = *XML::Xercesc::SchemaElementDecl_setXsiComplexTypeInfo;
+*setXsiSimpleTypeInfo = *XML::Xercesc::SchemaElementDecl_setXsiSimpleTypeInfo;
+*setAttWildCard = *XML::Xercesc::SchemaElementDecl_setAttWildCard;
+*setSubstitutionGroupElem = *XML::Xercesc::SchemaElementDecl_setSubstitutionGroupElem;
+*setValidity = *XML::Xercesc::SchemaElementDecl_setValidity;
+*setValidationAttempted = *XML::Xercesc::SchemaElementDecl_setValidationAttempted;
+*updateValidityFromElement = *XML::Xercesc::SchemaElementDecl_updateValidityFromElement;
+*updateValidityFromAttribute = *XML::Xercesc::SchemaElementDecl_updateValidityFromAttribute;
+*reset = *XML::Xercesc::SchemaElementDecl_reset;
+*addIdentityConstraint = *XML::Xercesc::SchemaElementDecl_addIdentityConstraint;
+*getIdentityConstraintCount = *XML::Xercesc::SchemaElementDecl_getIdentityConstraintCount;
+*getIdentityConstraintAt = *XML::Xercesc::SchemaElementDecl_getIdentityConstraintAt;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::SchemaElementDeclEnumerator ##############
+
+package XML::Xerces::SchemaElementDeclEnumerator;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaElementDeclEnumerator(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*hasMoreElements = *XML::Xercesc::SchemaElementDeclEnumerator_hasMoreElements;
+*nextElement = *XML::Xercesc::SchemaElementDeclEnumerator_nextElement;
+*Reset = *XML::Xercesc::SchemaElementDeclEnumerator_Reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::SchemaGrammar ##############
+
+package XML::Xerces::SchemaGrammar;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::Grammar );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaGrammar(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*getGrammarType = *XML::Xercesc::SchemaGrammar_getGrammarType;
+*getTargetNamespace = *XML::Xercesc::SchemaGrammar_getTargetNamespace;
+*findOrAddElemDecl = *XML::Xercesc::SchemaGrammar_findOrAddElemDecl;
+*getElemId = *XML::Xercesc::SchemaGrammar_getElemId;
+*getElemDecl = *XML::Xercesc::SchemaGrammar_getElemDecl;
+*getNotationDecl = *XML::Xercesc::SchemaGrammar_getNotationDecl;
+*getValidated = *XML::Xercesc::SchemaGrammar_getValidated;
+*putElemDecl = *XML::Xercesc::SchemaGrammar_putElemDecl;
+*putNotationDecl = *XML::Xercesc::SchemaGrammar_putNotationDecl;
+*setValidated = *XML::Xercesc::SchemaGrammar_setValidated;
+*reset = *XML::Xercesc::SchemaGrammar_reset;
+*getElemEnumerator = *XML::Xercesc::SchemaGrammar_getElemEnumerator;
+*getAttributeDeclRegistry = *XML::Xercesc::SchemaGrammar_getAttributeDeclRegistry;
+*getComplexTypeRegistry = *XML::Xercesc::SchemaGrammar_getComplexTypeRegistry;
+*getGroupInfoRegistry = *XML::Xercesc::SchemaGrammar_getGroupInfoRegistry;
+*getAttGroupInfoRegistry = *XML::Xercesc::SchemaGrammar_getAttGroupInfoRegistry;
+*getDatatypeRegistry = *XML::Xercesc::SchemaGrammar_getDatatypeRegistry;
+*getNamespaceScope = *XML::Xercesc::SchemaGrammar_getNamespaceScope;
+*getValidSubstitutionGroups = *XML::Xercesc::SchemaGrammar_getValidSubstitutionGroups;
+*getIDRefList = *XML::Xercesc::SchemaGrammar_getIDRefList;
+*setTargetNamespace = *XML::Xercesc::SchemaGrammar_setTargetNamespace;
+*setAttributeDeclRegistry = *XML::Xercesc::SchemaGrammar_setAttributeDeclRegistry;
+*setComplexTypeRegistry = *XML::Xercesc::SchemaGrammar_setComplexTypeRegistry;
+*setGroupInfoRegistry = *XML::Xercesc::SchemaGrammar_setGroupInfoRegistry;
+*setAttGroupInfoRegistry = *XML::Xercesc::SchemaGrammar_setAttGroupInfoRegistry;
+*setNamespaceScope = *XML::Xercesc::SchemaGrammar_setNamespaceScope;
+*setValidSubstitutionGroups = *XML::Xercesc::SchemaGrammar_setValidSubstitutionGroups;
+*putGroupElemDecl = *XML::Xercesc::SchemaGrammar_putGroupElemDecl;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::SchemaValidator ##############
+
+package XML::Xerces::SchemaValidator;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLValidator );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaValidator(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*checkContent = *XML::Xercesc::SchemaValidator_checkContent;
+*faultInAttr = *XML::Xercesc::SchemaValidator_faultInAttr;
+*preContentValidation = *XML::Xercesc::SchemaValidator_preContentValidation;
+*postParseValidation = *XML::Xercesc::SchemaValidator_postParseValidation;
+*reset = *XML::Xercesc::SchemaValidator_reset;
+*requiresNamespaces = *XML::Xercesc::SchemaValidator_requiresNamespaces;
+*validateAttrValue = *XML::Xercesc::SchemaValidator_validateAttrValue;
+*validateElement = *XML::Xercesc::SchemaValidator_validateElement;
+*getGrammar = *XML::Xercesc::SchemaValidator_getGrammar;
+*setGrammar = *XML::Xercesc::SchemaValidator_setGrammar;
+*handlesDTD = *XML::Xercesc::SchemaValidator_handlesDTD;
+*handlesSchema = *XML::Xercesc::SchemaValidator_handlesSchema;
+*normalizeWhiteSpace = *XML::Xercesc::SchemaValidator_normalizeWhiteSpace;
+*setGrammarResolver = *XML::Xercesc::SchemaValidator_setGrammarResolver;
+*setXsiType = *XML::Xercesc::SchemaValidator_setXsiType;
+*setNillable = *XML::Xercesc::SchemaValidator_setNillable;
+*setErrorReporter = *XML::Xercesc::SchemaValidator_setErrorReporter;
+*setExitOnFirstFatal = *XML::Xercesc::SchemaValidator_setExitOnFirstFatal;
+*setDatatypeBuffer = *XML::Xercesc::SchemaValidator_setDatatypeBuffer;
+*getCurrentTypeInfo = *XML::Xercesc::SchemaValidator_getCurrentTypeInfo;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::SchemaAttDefList ##############
+
+package XML::Xerces::SchemaAttDefList;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLAttDefList );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaAttDefList(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*hasMoreElements = *XML::Xercesc::SchemaAttDefList_hasMoreElements;
+*isEmpty = *XML::Xercesc::SchemaAttDefList_isEmpty;
+*ignore_me_for_now = *XML::Xercesc::SchemaAttDefList_ignore_me_for_now;
+*findAttDef = *XML::Xercesc::SchemaAttDefList_findAttDef;
+*nextElement = *XML::Xercesc::SchemaAttDefList_nextElement;
+*Reset = *XML::Xercesc::SchemaAttDefList_Reset;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
+
+
+############# Class : XML::Xerces::SchemaAttDef ##############
+
+package XML::Xerces::SchemaAttDef;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLAttDef );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_SchemaAttDef(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*getFullName = *XML::Xercesc::SchemaAttDef_getFullName;
+*reset = *XML::Xercesc::SchemaAttDef_reset;
+*getValidity = *XML::Xercesc::SchemaAttDef_getValidity;
+*getValidationAttempted = *XML::Xercesc::SchemaAttDef_getValidationAttempted;
+*getTypeType = *XML::Xercesc::SchemaAttDef_getTypeType;
+*getTypeUri = *XML::Xercesc::SchemaAttDef_getTypeUri;
+*getTypeName = *XML::Xercesc::SchemaAttDef_getTypeName;
+*getTypeAnonymous = *XML::Xercesc::SchemaAttDef_getTypeAnonymous;
+*isTypeDefinitionUnion = *XML::Xercesc::SchemaAttDef_isTypeDefinitionUnion;
+*getMemberTypeUri = *XML::Xercesc::SchemaAttDef_getMemberTypeUri;
+*getMemberTypeAnonymous = *XML::Xercesc::SchemaAttDef_getMemberTypeAnonymous;
+*getMemberTypeName = *XML::Xercesc::SchemaAttDef_getMemberTypeName;
+*getDOMTypeInfoUri = *XML::Xercesc::SchemaAttDef_getDOMTypeInfoUri;
+*getDOMTypeInfoName = *XML::Xercesc::SchemaAttDef_getDOMTypeInfoName;
+*getElemId = *XML::Xercesc::SchemaAttDef_getElemId;
+*getAttName = *XML::Xercesc::SchemaAttDef_getAttName;
+*getDatatypeValidator = *XML::Xercesc::SchemaAttDef_getDatatypeValidator;
+*getNamespaceList = *XML::Xercesc::SchemaAttDef_getNamespaceList;
+*setElemId = *XML::Xercesc::SchemaAttDef_setElemId;
+*setAttName = *XML::Xercesc::SchemaAttDef_setAttName;
+*setDatatypeValidator = *XML::Xercesc::SchemaAttDef_setDatatypeValidator;
+*setAnyDatatypeValidator = *XML::Xercesc::SchemaAttDef_setAnyDatatypeValidator;
+*setMembertypeValidator = *XML::Xercesc::SchemaAttDef_setMembertypeValidator;
+*setNamespaceList = *XML::Xercesc::SchemaAttDef_setNamespaceList;
+*resetNamespaceList = *XML::Xercesc::SchemaAttDef_resetNamespaceList;
+*setValidity = *XML::Xercesc::SchemaAttDef_setValidity;
+*setValidationAttempted = *XML::Xercesc::SchemaAttDef_setValidationAttempted;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
 
 
 ############# Class : XML::Xerces::SAXException ##############
@@ -1244,36 +2205,24 @@ use overload
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_SAXException(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::SAXException", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_SAXException(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-sub operator_assignment {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXException_operator_assignment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*operator_assignment = *XML::Xercesc::SAXException_operator_assignment;
 *getMessage = *XML::Xercesc::SAXException_getMessage;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::SAXNotSupportedException ##############
@@ -1285,13 +2234,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_SAXNotSupportedException(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::SAXNotSupportedException", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_SAXNotSupportedException(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1299,13 +2243,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::SAXNotRecognizedException ##############
@@ -1317,13 +2261,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_SAXNotRecognizedException(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::SAXNotRecognizedException", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_SAXNotRecognizedException(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1331,13 +2270,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::SAXParseException ##############
@@ -1352,24 +2291,12 @@ use overload
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_SAXParseException(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::SAXParseException", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_SAXParseException(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-sub operator_assignment {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParseException_operator_assignment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*operator_assignment = *XML::Xercesc::SAXParseException_operator_assignment;
 *getColumnNumber = *XML::Xercesc::SAXParseException_getColumnNumber;
 *getLineNumber = *XML::Xercesc::SAXParseException_getLineNumber;
 *getPublicId = *XML::Xercesc::SAXParseException_getPublicId;
@@ -1378,13 +2305,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::ErrorHandler ##############
@@ -1403,13 +2330,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DTDHandler ##############
@@ -1427,13 +2354,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DocumentHandler ##############
@@ -1457,13 +2384,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::EntityResolver ##############
@@ -1474,25 +2401,18 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub resolveEntity {
-    my @args = @_;
-    my $result = XML::Xercesc::EntityResolver_resolveEntity(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*resolveEntity = *XML::Xercesc::EntityResolver_resolveEntity;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::AttributeList ##############
@@ -1513,13 +2433,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::HandlerBase ##############
@@ -1538,14 +2458,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *setDocumentLocator = *XML::Xercesc::HandlerBase_setDocumentLocator;
 *startDocument = *XML::Xercesc::HandlerBase_startDocument;
 *startElement = *XML::Xercesc::HandlerBase_startElement;
-sub resolveEntity {
-    my @args = @_;
-    my $result = XML::Xercesc::HandlerBase_resolveEntity(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*resolveEntity = *XML::Xercesc::HandlerBase_resolveEntity;
 *error = *XML::Xercesc::HandlerBase_error;
 *fatalError = *XML::Xercesc::HandlerBase_fatalError;
 *warning = *XML::Xercesc::HandlerBase_warning;
@@ -1555,13 +2468,8 @@ sub resolveEntity {
 *unparsedEntityDecl = *XML::Xercesc::HandlerBase_unparsedEntityDecl;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_HandlerBase(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::HandlerBase", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_HandlerBase(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1569,13 +2477,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::Locator ##############
@@ -1594,13 +2502,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::Attributes ##############
@@ -1624,13 +2532,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::ContentHandler ##############
@@ -1656,13 +2564,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::LexicalHandler ##############
@@ -1684,13 +2592,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DeclHandler ##############
@@ -1709,13 +2617,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DefaultHandler ##############
@@ -1737,14 +2645,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *startPrefixMapping = *XML::Xercesc::DefaultHandler_startPrefixMapping;
 *endPrefixMapping = *XML::Xercesc::DefaultHandler_endPrefixMapping;
 *skippedEntity = *XML::Xercesc::DefaultHandler_skippedEntity;
-sub resolveEntity {
-    my @args = @_;
-    my $result = XML::Xercesc::DefaultHandler_resolveEntity(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*resolveEntity = *XML::Xercesc::DefaultHandler_resolveEntity;
 *error = *XML::Xercesc::DefaultHandler_error;
 *fatalError = *XML::Xercesc::DefaultHandler_fatalError;
 *warning = *XML::Xercesc::DefaultHandler_warning;
@@ -1765,13 +2666,8 @@ sub resolveEntity {
 *externalEntityDecl = *XML::Xercesc::DefaultHandler_externalEntityDecl;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_DefaultHandler(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::DefaultHandler", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_DefaultHandler(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1779,13 +2675,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::InputSource ##############
@@ -1810,13 +2706,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::MemBufInputSource ##############
@@ -1828,17 +2724,12 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
     # SYSTEM ID is *optional*
-    if (scalar @args == 1) {
-      push(@args,'FAKE_SYSTEM_ID');
+    if (scalar @_ == 1) {
+      push(@_,'FAKE_SYSTEM_ID');
     }
-    my $self = XML::Xercesc::new_MemBufInputSource(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::MemBufInputSource", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_MemBufInputSource(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1848,13 +2739,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::StdInInputSource ##############
@@ -1866,13 +2757,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_StdInInputSource(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::StdInInputSource", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_StdInInputSource(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1881,13 +2767,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::LocalFileInputSource ##############
@@ -1899,13 +2785,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_LocalFileInputSource(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::LocalFileInputSource", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_LocalFileInputSource(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -1914,13 +2795,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::URLInputSource ##############
@@ -1932,36 +2813,24 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_URLInputSource(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::URLInputSource", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_URLInputSource(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
 *makeStream = *XML::Xercesc::URLInputSource_makeStream;
-sub urlSrc {
-    my @args = @_;
-    my $result = XML::Xercesc::URLInputSource_urlSrc(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*urlSrc = *XML::Xercesc::URLInputSource_urlSrc;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLFormatter ##############
@@ -1983,13 +2852,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *DefaultUnRep = *XML::Xercesc::XMLFormatter_DefaultUnRep;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLFormatter(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLFormatter", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLFormatter(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -2003,13 +2867,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLFormatTarget ##############
@@ -2026,13 +2890,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::MemBufFormatTarget ##############
@@ -2044,13 +2908,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_MemBufFormatTarget(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::MemBufFormatTarget", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_MemBufFormatTarget(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -2062,13 +2921,42 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
+
+
+############# Class : XML::Xerces::LocalFileFormatTarget ##############
+
+package XML::Xerces::LocalFileFormatTarget;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces XML::Xerces::XMLFormatTarget );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_LocalFileFormatTarget(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*writeChars = *XML::Xercesc::LocalFileFormatTarget_writeChars;
+*flush = *XML::Xercesc::LocalFileFormatTarget_flush;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
 
 
 ############# Class : XML::Xerces::StdOutFormatTarget ##############
@@ -2080,13 +2968,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_StdOutFormatTarget(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::StdOutFormatTarget", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_StdOutFormatTarget(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -2096,13 +2979,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLUni ##############
@@ -2303,13 +3186,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *fgXercescDefaultLocale = *XML::Xercesc::XMLUni_fgXercescDefaultLocale;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLUni(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLUni", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLUni(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -2317,13 +3195,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLScanner ##############
@@ -2353,14 +3231,6 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *getName = *XML::Xercesc::XMLScanner_getName;
 *resolveQName = *XML::Xercesc::XMLScanner_resolveQName;
 *scanNext = *XML::Xercesc::XMLScanner_scanNext;
-sub getErrorHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLScanner_getErrorHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
 *getReaderMgr = *XML::Xercesc::XMLScanner_getReaderMgr;
 *getSrcOffset = *XML::Xercesc::XMLScanner_getSrcOffset;
 *getSecurityManager = *XML::Xercesc::XMLScanner_getSecurityManager;
@@ -2369,14 +3239,7 @@ sub getErrorHandler {
 *isCachingGrammarFromParse = *XML::Xercesc::XMLScanner_isCachingGrammarFromParse;
 *isUsingCachedGrammarInParse = *XML::Xercesc::XMLScanner_isUsingCachedGrammarInParse;
 *getCalculateSrcOfs = *XML::Xercesc::XMLScanner_getCalculateSrcOfs;
-sub getRootGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLScanner_getRootGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getRootGrammar = *XML::Xercesc::XMLScanner_getRootGrammar;
 *getXMLVersion = *XML::Xercesc::XMLScanner_getXMLVersion;
 *getMemoryManager = *XML::Xercesc::XMLScanner_getMemoryManager;
 *getEmptyNamespaceId = *XML::Xercesc::XMLScanner_getEmptyNamespaceId;
@@ -2394,7 +3257,8 @@ sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::XMLScanner::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -2426,27 +3290,20 @@ sub setErrorHandler {
 *setDoValidation = *XML::Xercesc::XMLScanner_setDoValidation;
 *scanReset = *XML::Xercesc::XMLScanner_scanReset;
 *checkXMLDecl = *XML::Xercesc::XMLScanner_checkXMLDecl;
-sub loadGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLScanner_loadGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*loadGrammar = *XML::Xercesc::XMLScanner_loadGrammar;
 *reinitScannerMutex = *XML::Xercesc::XMLScanner_reinitScannerMutex;
 *reinitMsgLoader = *XML::Xercesc::XMLScanner_reinitMsgLoader;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLPScanToken ##############
@@ -2461,35 +3318,23 @@ use overload
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XMLPScanToken(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XMLPScanToken", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XMLPScanToken(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-sub operator_assignment {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLPScanToken_operator_assignment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*operator_assignment = *XML::Xercesc::XMLPScanToken_operator_assignment;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::Parser ##############
@@ -2503,7 +3348,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 sub setEntityResolver {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::Parser::OWNER{$self}->{__ENTITY_RESOLVER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlEntityResolverHandler->new($handler);
@@ -2517,7 +3363,8 @@ sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::Parser::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -2531,13 +3378,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLDocumentHandler ##############
@@ -2552,13 +3399,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLErrorReporter ##############
@@ -2579,13 +3426,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLEntityHandler ##############
@@ -2600,13 +3447,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DocTypeHandler ##############
@@ -2621,13 +3468,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::SAX2XMLReader ##############
@@ -2652,44 +3499,17 @@ sub DESTROY {
     }
 }
 
-sub getContentHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getContentHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getDTDHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getDTDHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getEntityResolver {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getEntityResolver(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getErrorHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getErrorHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getContentHandler = *XML::Xercesc::SAX2XMLReader_getContentHandler;
+*getDTDHandler = *XML::Xercesc::SAX2XMLReader_getDTDHandler;
+*getEntityResolver = *XML::Xercesc::SAX2XMLReader_getEntityResolver;
+*getErrorHandler = *XML::Xercesc::SAX2XMLReader_getErrorHandler;
 *getFeature = *XML::Xercesc::SAX2XMLReader_getFeature;
 *getProperty = *XML::Xercesc::SAX2XMLReader_getProperty;
 sub setContentHandler {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAX2XMLReader::OWNER{$self}->{__CONTENT_HANDLER};
-  if (defined $callback) {
+#  if (defined \$callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlContentCallbackHandler->new($handler);
@@ -2701,7 +3521,8 @@ sub setContentHandler {
 sub setEntityResolver {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAX2XMLReader::OWNER{$self}->{__ENTITY_RESOLVER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlEntityResolverHandler->new($handler);
@@ -2713,7 +3534,8 @@ sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::SAX2XMLReader::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -2725,51 +3547,16 @@ sub setErrorHandler {
 *setFeature = *XML::Xercesc::SAX2XMLReader_setFeature;
 *setProperty = *XML::Xercesc::SAX2XMLReader_setProperty;
 *parse = *XML::Xercesc::SAX2XMLReader_parse;
-sub getDeclarationHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getDeclarationHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getLexicalHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getLexicalHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getDeclarationHandler = *XML::Xercesc::SAX2XMLReader_getDeclarationHandler;
+*getLexicalHandler = *XML::Xercesc::SAX2XMLReader_getLexicalHandler;
 *setDeclarationHandler = *XML::Xercesc::SAX2XMLReader_setDeclarationHandler;
 *setLexicalHandler = *XML::Xercesc::SAX2XMLReader_setLexicalHandler;
-sub getValidator {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getValidator(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getValidator = *XML::Xercesc::SAX2XMLReader_getValidator;
 *getErrorCount = *XML::Xercesc::SAX2XMLReader_getErrorCount;
 *getExitOnFirstFatalError = *XML::Xercesc::SAX2XMLReader_getExitOnFirstFatalError;
 *getValidationConstraintFatal = *XML::Xercesc::SAX2XMLReader_getValidationConstraintFatal;
-sub getGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getRootGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_getRootGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getGrammar = *XML::Xercesc::SAX2XMLReader_getGrammar;
+*getRootGrammar = *XML::Xercesc::SAX2XMLReader_getRootGrammar;
 *getURIText = *XML::Xercesc::SAX2XMLReader_getURIText;
 *getSrcOffset = *XML::Xercesc::SAX2XMLReader_getSrcOffset;
 *setValidator = *XML::Xercesc::SAX2XMLReader_setValidator;
@@ -2778,14 +3565,7 @@ sub getRootGrammar {
 *parseFirst = *XML::Xercesc::SAX2XMLReader_parseFirst;
 *parseNext = *XML::Xercesc::SAX2XMLReader_parseNext;
 *parseReset = *XML::Xercesc::SAX2XMLReader_parseReset;
-sub loadGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::SAX2XMLReader_loadGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*loadGrammar = *XML::Xercesc::SAX2XMLReader_loadGrammar;
 *resetCachedGrammarPool = *XML::Xercesc::SAX2XMLReader_resetCachedGrammarPool;
 *installAdvDocHandler = *XML::Xercesc::SAX2XMLReader_installAdvDocHandler;
 *removeAdvDocHandler = *XML::Xercesc::SAX2XMLReader_removeAdvDocHandler;
@@ -2793,13 +3573,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XMLReaderFactory ##############
@@ -2808,25 +3588,18 @@ package XML::Xerces::XMLReaderFactory;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces );
 %OWNER = ();
-sub createXMLReader {
-    my @args = @_;
-    my $result = XML::Xercesc::XMLReaderFactory_createXMLReader(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*createXMLReader = *XML::Xercesc::XMLReaderFactory_createXMLReader;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::SAXParser ##############
@@ -2841,13 +3614,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *Val_Auto = *XML::Xercesc::SAXParser_Val_Auto;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_SAXParser(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::SAXParser", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_SAXParser(@_);
+    bless $self, $pkg if defined($self);
 }
 
 sub DESTROY {
@@ -2862,38 +3630,10 @@ sub DESTROY {
     }
 }
 
-sub getDocumentHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_getDocumentHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getEntityResolver {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_getEntityResolver(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getErrorHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_getErrorHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getValidator {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_getValidator(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getDocumentHandler = *XML::Xercesc::SAXParser_getDocumentHandler;
+*getEntityResolver = *XML::Xercesc::SAXParser_getEntityResolver;
+*getErrorHandler = *XML::Xercesc::SAXParser_getErrorHandler;
+*getValidator = *XML::Xercesc::SAXParser_getValidator;
 *getValidationScheme = *XML::Xercesc::SAXParser_getValidationScheme;
 *getDoSchema = *XML::Xercesc::SAXParser_getDoSchema;
 *getValidationSchemaFullChecking = *XML::Xercesc::SAXParser_getValidationSchemaFullChecking;
@@ -2909,22 +3649,8 @@ sub getValidator {
 *isUsingCachedGrammarInParse = *XML::Xercesc::SAXParser_isUsingCachedGrammarInParse;
 *getCalculateSrcOfs = *XML::Xercesc::SAXParser_getCalculateSrcOfs;
 *getStandardUriConformant = *XML::Xercesc::SAXParser_getStandardUriConformant;
-sub getGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_getGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getRootGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_getRootGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getGrammar = *XML::Xercesc::SAXParser_getGrammar;
+*getRootGrammar = *XML::Xercesc::SAXParser_getRootGrammar;
 *getURIText = *XML::Xercesc::SAXParser_getURIText;
 *getSrcOffset = *XML::Xercesc::SAXParser_getSrcOffset;
 *setDoNamespaces = *XML::Xercesc::SAXParser_setDoNamespaces;
@@ -2947,20 +3673,14 @@ sub getRootGrammar {
 *parseFirst = *XML::Xercesc::SAXParser_parseFirst;
 *parseNext = *XML::Xercesc::SAXParser_parseNext;
 *parseReset = *XML::Xercesc::SAXParser_parseReset;
-sub loadGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::SAXParser_loadGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*loadGrammar = *XML::Xercesc::SAXParser_loadGrammar;
 *resetCachedGrammarPool = *XML::Xercesc::SAXParser_resetCachedGrammarPool;
 *parse = *XML::Xercesc::SAXParser_parse;
 sub setDocumentHandler {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAXParser::OWNER{$self}->{__DOCUMENT_HANDLER};
-  if (defined $callback) {
+#  if (defined \$callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlDocumentCallbackHandler->new($handler);
@@ -2973,7 +3693,8 @@ sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::SAXParser::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -2985,7 +3706,8 @@ sub setErrorHandler {
 sub setEntityResolver {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::SAXParser::OWNER{$self}->{__ENTITY_RESOLVER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlEntityResolverHandler->new($handler);
@@ -2999,49 +3721,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
-
-
-############# Class : XML::Xerces::Grammar ##############
-
-package XML::Xerces::Grammar;
-use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces );
-%OWNER = ();
-%ITERATORS = ();
-*DTDGrammarType = *XML::Xercesc::Grammar_DTDGrammarType;
-*SchemaGrammarType = *XML::Xercesc::Grammar_SchemaGrammarType;
-*UNKNOWN_SCOPE = *XML::Xercesc::Grammar_UNKNOWN_SCOPE;
-*TOP_LEVEL_SCOPE = *XML::Xercesc::Grammar_TOP_LEVEL_SCOPE;
-
-*getGrammarType = *XML::Xercesc::Grammar_getGrammarType;
-*getTargetNamespace = *XML::Xercesc::Grammar_getTargetNamespace;
-*getValidated = *XML::Xercesc::Grammar_getValidated;
-*findOrAddElemDecl = *XML::Xercesc::Grammar_findOrAddElemDecl;
-*getElemId = *XML::Xercesc::Grammar_getElemId;
-*getElemDecl = *XML::Xercesc::Grammar_getElemDecl;
-*getNotationDecl = *XML::Xercesc::Grammar_getNotationDecl;
-*putElemDecl = *XML::Xercesc::Grammar_putElemDecl;
-*putNotationDecl = *XML::Xercesc::Grammar_putNotationDecl;
-*setValidated = *XML::Xercesc::Grammar_setValidated;
-*reset = *XML::Xercesc::Grammar_reset;
-sub DISOWN {
-    my $self = shift;
-    my $ptr = tied(%$self);
-    delete $OWNER{$ptr};
-    };
-
-sub ACQUIRE {
-    my $self = shift;
-    my $ptr = tied(%$self);
-    $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMException ##############
@@ -3050,19 +3736,11 @@ package XML::Xerces::DOMException;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces );
 %OWNER = ();
-%BLESSEDMEMBERS = (
-);
-
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_DOMException(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::DOMException", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_DOMException(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -3090,35 +3768,12 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
-
-sub FETCH {
-    my ($self,$field) = @_;
-    my $member_func = "swig_${field}_get";
-    my $val = $self->$member_func();
-    if (exists $BLESSEDMEMBERS{$field}) {
-        return undef if (!defined($val));
-        my %retval;
-        tie %retval,$BLESSEDMEMBERS{$field},$val;
-        return bless \%retval, $BLESSEDMEMBERS{$field};
-    }
-    return $val;
-}
-
-sub STORE {
-    my ($self,$field,$newval) = @_;
-    my $member_func = "swig_${field}_set";
-    if (exists $BLESSEDMEMBERS{$field}) {
-        $self->$member_func(tied(%{$newval}));
-    } else {
-        $self->$member_func($newval);
-    }
 }
 
 
@@ -3130,25 +3785,18 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub createRange {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocumentRange_createRange(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*createRange = *XML::Xercesc::DOMDocumentRange_createRange;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMDocumentTraversal ##############
@@ -3162,7 +3810,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 sub createNodeIterator {
     my ($self,$root,$what,$filter,$expand) = @_;
     my $callback = $XML::Xerces::DOMNodeIterator::OWNER{$self}->{__NODE_FILTER};
-    if (defined $callback) {
+#    if (defined \$callback) {
+    if (0) {
       $callback->set_callback_obj($filter);
     } else {
       $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
@@ -3172,17 +3821,13 @@ sub createNodeIterator {
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMDocumentTraversal();
     }
-
-    my $result = XML::Xercesc::DOMDocumentTraversal_createNodeIterator(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMDocumentTraversal_createNodeIterator(@args);
 }
 sub createTreeWalker {
     my ($self,$root,$what,$filter,$expand) = @_;
     my $callback = $XML::Xerces::DOMTreeWalker::OWNER{$self}->{__NODE_FILTER};
-    if (defined $callback) {
+#    if (defined \$callback) {
+    if (0) {
       $callback->set_callback_obj($filter);
     } else {
       $callback = XML::Xerces::PerlNodeFilterCallbackHandler->new($filter);
@@ -3192,24 +3837,19 @@ sub createTreeWalker {
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMDocumentTraversal();
     }
-
-    my $result = XML::Xercesc::DOMDocumentTraversal_createTreeWalker(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMDocumentTraversal_createTreeWalker(@args);
 }
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMNodeFilter ##############
@@ -3241,13 +3881,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMNodeIterator ##############
@@ -3258,53 +3898,25 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub getRoot {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNodeIterator_getRoot(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getRoot = *XML::Xercesc::DOMNodeIterator_getRoot;
 *getWhatToShow = *XML::Xercesc::DOMNodeIterator_getWhatToShow;
-sub getFilter {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNodeIterator_getFilter(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getFilter = *XML::Xercesc::DOMNodeIterator_getFilter;
 *getExpandEntityReferences = *XML::Xercesc::DOMNodeIterator_getExpandEntityReferences;
-sub nextNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNodeIterator_nextNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub previousNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNodeIterator_previousNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*nextNode = *XML::Xercesc::DOMNodeIterator_nextNode;
+*previousNode = *XML::Xercesc::DOMNodeIterator_previousNode;
 *detach = *XML::Xercesc::DOMNodeIterator_detach;
 *release = *XML::Xercesc::DOMNodeIterator_release;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMRange ##############
@@ -3319,33 +3931,12 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *START_TO_END = *XML::Xercesc::DOMRange_START_TO_END;
 *END_TO_END = *XML::Xercesc::DOMRange_END_TO_END;
 *END_TO_START = *XML::Xercesc::DOMRange_END_TO_START;
-sub getStartContainer {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMRange_getStartContainer(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getStartContainer = *XML::Xercesc::DOMRange_getStartContainer;
 *getStartOffset = *XML::Xercesc::DOMRange_getStartOffset;
-sub getEndContainer {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMRange_getEndContainer(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getEndContainer = *XML::Xercesc::DOMRange_getEndContainer;
 *getEndOffset = *XML::Xercesc::DOMRange_getEndOffset;
 *getCollapsed = *XML::Xercesc::DOMRange_getCollapsed;
-sub getCommonAncestorContainer {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMRange_getCommonAncestorContainer(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getCommonAncestorContainer = *XML::Xercesc::DOMRange_getCommonAncestorContainer;
 *setStart = *XML::Xercesc::DOMRange_setStart;
 *setEnd = *XML::Xercesc::DOMRange_setEnd;
 *setStartBefore = *XML::Xercesc::DOMRange_setStartBefore;
@@ -3357,32 +3948,11 @@ sub getCommonAncestorContainer {
 *selectNodeContents = *XML::Xercesc::DOMRange_selectNodeContents;
 *compareBoundaryPoints = *XML::Xercesc::DOMRange_compareBoundaryPoints;
 *deleteContents = *XML::Xercesc::DOMRange_deleteContents;
-sub extractContents {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMRange_extractContents(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub cloneContents {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMRange_cloneContents(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*extractContents = *XML::Xercesc::DOMRange_extractContents;
+*cloneContents = *XML::Xercesc::DOMRange_cloneContents;
 *insertNode = *XML::Xercesc::DOMRange_insertNode;
 *surroundContents = *XML::Xercesc::DOMRange_surroundContents;
-sub cloneRange {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMRange_cloneRange(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*cloneRange = *XML::Xercesc::DOMRange_cloneRange;
 *toString = *XML::Xercesc::DOMRange_toString;
 *detach = *XML::Xercesc::DOMRange_detach;
 *release = *XML::Xercesc::DOMRange_release;
@@ -3390,13 +3960,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMRangeException ##############
@@ -3405,21 +3975,13 @@ package XML::Xerces::DOMRangeException;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces XML::Xerces::DOMException );
 %OWNER = ();
-%BLESSEDMEMBERS = (
-);
-
 %ITERATORS = ();
 *BAD_BOUNDARYPOINTS_ERR = *XML::Xercesc::DOMRangeException_BAD_BOUNDARYPOINTS_ERR;
 *INVALID_NODE_TYPE_ERR = *XML::Xercesc::DOMRangeException_INVALID_NODE_TYPE_ERR;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_DOMRangeException(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::DOMRangeException", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_DOMRangeException(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -3429,35 +3991,12 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
-
-sub FETCH {
-    my ($self,$field) = @_;
-    my $member_func = "swig_${field}_get";
-    my $val = $self->$member_func();
-    if (exists $BLESSEDMEMBERS{$field}) {
-        return undef if (!defined($val));
-        my %retval;
-        tie %retval,$BLESSEDMEMBERS{$field},$val;
-        return bless \%retval, $BLESSEDMEMBERS{$field};
-    }
-    return $val;
-}
-
-sub STORE {
-    my ($self,$field,$newval) = @_;
-    my $member_func = "swig_${field}_set";
-    if (exists $BLESSEDMEMBERS{$field}) {
-        $self->$member_func(tied(%{$newval}));
-    } else {
-        $self->$member_func($newval);
-    }
 }
 
 
@@ -3469,101 +4008,31 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub getRoot {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_getRoot(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getRoot = *XML::Xercesc::DOMTreeWalker_getRoot;
 *getWhatToShow = *XML::Xercesc::DOMTreeWalker_getWhatToShow;
-sub getFilter {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_getFilter(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getFilter = *XML::Xercesc::DOMTreeWalker_getFilter;
 *getExpandEntityReferences = *XML::Xercesc::DOMTreeWalker_getExpandEntityReferences;
-sub getCurrentNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_getCurrentNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub parentNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_parentNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub firstChild {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_firstChild(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub lastChild {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_lastChild(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub previousSibling {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_previousSibling(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub nextSibling {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_nextSibling(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub previousNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_previousNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub nextNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMTreeWalker_nextNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getCurrentNode = *XML::Xercesc::DOMTreeWalker_getCurrentNode;
+*parentNode = *XML::Xercesc::DOMTreeWalker_parentNode;
+*firstChild = *XML::Xercesc::DOMTreeWalker_firstChild;
+*lastChild = *XML::Xercesc::DOMTreeWalker_lastChild;
+*previousSibling = *XML::Xercesc::DOMTreeWalker_previousSibling;
+*nextSibling = *XML::Xercesc::DOMTreeWalker_nextSibling;
+*previousNode = *XML::Xercesc::DOMTreeWalker_previousNode;
+*nextNode = *XML::Xercesc::DOMTreeWalker_nextNode;
 *setCurrentNode = *XML::Xercesc::DOMTreeWalker_setCurrentNode;
 *release = *XML::Xercesc::DOMTreeWalker_release;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMNode ##############
@@ -3602,458 +4071,296 @@ sub getNodeName {
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getNodeName(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getNodeName(@args);
 }
 sub getNodeValue {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getNodeValue(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getNodeValue(@args);
 }
 sub getNodeType {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getNodeType(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getNodeType(@args);
 }
 sub getParentNode {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getParentNode(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getParentNode(@args);
 }
 sub getChildNodes {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNode_getChildNodes(@args);
+    my $result = XML::Xercesc::DOMNode_getChildNodes(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_list() if wantarray;
-    $DOMNodeList::OWNER{$result} = 1; 
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
 sub getFirstChild {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getFirstChild(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getFirstChild(@args);
 }
 sub getLastChild {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getLastChild(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getLastChild(@args);
 }
 sub getPreviousSibling {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getPreviousSibling(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getPreviousSibling(@args);
 }
 sub getNextSibling {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getNextSibling(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getNextSibling(@args);
 }
 sub getAttributes {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNode_getAttributes(@args);
+    my $result = XML::Xercesc::DOMNode_getAttributes(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_hash() if wantarray;
-    $DOMNamedNodeMap::OWNER{$result} = 1;
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
 sub getOwnerDocument {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getOwnerDocument(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getOwnerDocument(@args);
 }
 sub cloneNode {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_cloneNode(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_cloneNode(@args);
 }
 sub insertBefore {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_insertBefore(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_insertBefore(@args);
 }
 sub replaceChild {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_replaceChild(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_replaceChild(@args);
 }
 sub removeChild {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_removeChild(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_removeChild(@args);
 }
 sub appendChild {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_appendChild(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_appendChild(@args);
 }
 sub hasChildNodes {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_hasChildNodes(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_hasChildNodes(@args);
 }
 sub setNodeValue {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_setNodeValue(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_setNodeValue(@args);
 }
 sub normalize {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_normalize(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_normalize(@args);
 }
 sub isSupported {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_isSupported(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_isSupported(@args);
 }
 sub getNamespaceURI {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getNamespaceURI(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getNamespaceURI(@args);
 }
 sub getPrefix {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getPrefix(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getPrefix(@args);
 }
 sub getLocalName {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getLocalName(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getLocalName(@args);
 }
 sub setPrefix {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_setPrefix(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_setPrefix(@args);
 }
 sub hasAttributes {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_hasAttributes(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_hasAttributes(@args);
 }
 sub isSameNode {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_isSameNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_isSameNode(@args);
 }
 sub isEqualNode {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_isEqualNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_isEqualNode(@args);
 }
 sub setUserData {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_setUserData(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_setUserData(@args);
 }
 sub getUserData {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getUserData(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getUserData(@args);
 }
 sub getBaseURI {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getBaseURI(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getBaseURI(@args);
 }
 sub compareTreePosition {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_compareTreePosition(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_compareTreePosition(@args);
 }
 sub getTextContent {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getTextContent(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getTextContent(@args);
 }
 sub setTextContent {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_setTextContent(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_setTextContent(@args);
 }
 sub lookupNamespacePrefix {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_lookupNamespacePrefix(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_lookupNamespacePrefix(@args);
 }
 sub isDefaultNamespace {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_isDefaultNamespace(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_isDefaultNamespace(@args);
 }
 sub lookupNamespaceURI {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_lookupNamespaceURI(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_lookupNamespaceURI(@args);
 }
 sub getInterface {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_getInterface(@args);
-    return undef if (!defined($result));
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_getInterface(@args);
 }
 sub release {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_release(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_release(@args);
 }
 sub operator_equal_to {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_operator_equal_to(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_operator_equal_to(@args);
 }
 sub operator_not_equal_to {
     my @args = @_;
     if ($args[0]->isa('XML::Xerces::DOMDocument')) {
       $args[0] = $args[0]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMNode_operator_not_equal_to(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMNode_operator_not_equal_to(@args);
 }
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMAttr ##############
@@ -4068,27 +4375,20 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *getSpecified = *XML::Xercesc::DOMAttr_getSpecified;
 *getValue = *XML::Xercesc::DOMAttr_getValue;
 *setValue = *XML::Xercesc::DOMAttr_setValue;
-sub getOwnerElement {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMAttr_getOwnerElement(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getOwnerElement = *XML::Xercesc::DOMAttr_getOwnerElement;
 *isId = *XML::Xercesc::DOMAttr_isId;
 *getTypeInfo = *XML::Xercesc::DOMAttr_getTypeInfo;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMCharacterData ##############
@@ -4111,13 +4411,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMText ##############
@@ -4128,36 +4428,22 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub splitText {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMText_splitText(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*splitText = *XML::Xercesc::DOMText_splitText;
 *getIsWhitespaceInElementContent = *XML::Xercesc::DOMText_getIsWhitespaceInElementContent;
 *getWholeText = *XML::Xercesc::DOMText_getWholeText;
-sub replaceWholeText {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMText_replaceWholeText(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*replaceWholeText = *XML::Xercesc::DOMText_replaceWholeText;
 *isIgnorableWhitespace = *XML::Xercesc::DOMText_isIgnorableWhitespace;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMCDATASection ##############
@@ -4172,13 +4458,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMComment ##############
@@ -4193,13 +4479,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMDocument ##############
@@ -4217,146 +4503,38 @@ sub DESTROY {
     }
 }
 
-sub createElement {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createElement(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createDocumentFragment {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createDocumentFragment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createTextNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createTextNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createComment {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createComment(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createCDATASection {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createCDATASection(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createProcessingInstruction {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createProcessingInstruction(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createAttribute {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createAttribute(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createEntityReference {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createEntityReference(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getDoctype {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_getDoctype(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getImplementation {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_getImplementation(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getDocumentElement {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_getDocumentElement(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*createElement = *XML::Xercesc::DOMDocument_createElement;
+*createDocumentFragment = *XML::Xercesc::DOMDocument_createDocumentFragment;
+*createTextNode = *XML::Xercesc::DOMDocument_createTextNode;
+*createComment = *XML::Xercesc::DOMDocument_createComment;
+*createCDATASection = *XML::Xercesc::DOMDocument_createCDATASection;
+*createProcessingInstruction = *XML::Xercesc::DOMDocument_createProcessingInstruction;
+*createAttribute = *XML::Xercesc::DOMDocument_createAttribute;
+*createEntityReference = *XML::Xercesc::DOMDocument_createEntityReference;
+*getDoctype = *XML::Xercesc::DOMDocument_getDoctype;
+*getImplementation = *XML::Xercesc::DOMDocument_getImplementation;
+*getDocumentElement = *XML::Xercesc::DOMDocument_getDocumentElement;
 sub getElementsByTagName {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_getElementsByTagName(@args);
+    my $result = XML::Xercesc::DOMDocument_getElementsByTagName(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_list() if wantarray;
-    $DOMNodeList::OWNER{$result} = 1; 
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
-sub importNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_importNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createAttributeNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createAttributeNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*importNode = *XML::Xercesc::DOMDocument_importNode;
+*createAttributeNS = *XML::Xercesc::DOMDocument_createAttributeNS;
 sub getElementsByTagNameNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_getElementsByTagNameNS(@args);
+    my $result = XML::Xercesc::DOMDocument_getElementsByTagNameNS(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_list() if wantarray;
-    $DOMNodeList::OWNER{$result} = 1; 
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
-sub getElementById {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_getElementById(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getElementById = *XML::Xercesc::DOMDocument_getElementById;
 *getActualEncoding = *XML::Xercesc::DOMDocument_getActualEncoding;
 *setActualEncoding = *XML::Xercesc::DOMDocument_setActualEncoding;
 *getEncoding = *XML::Xercesc::DOMDocument_getEncoding;
@@ -4369,83 +4547,27 @@ sub getElementById {
 *setDocumentURI = *XML::Xercesc::DOMDocument_setDocumentURI;
 *getStrictErrorChecking = *XML::Xercesc::DOMDocument_getStrictErrorChecking;
 *setStrictErrorChecking = *XML::Xercesc::DOMDocument_setStrictErrorChecking;
-sub renameNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_renameNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub adoptNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_adoptNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*renameNode = *XML::Xercesc::DOMDocument_renameNode;
+*adoptNode = *XML::Xercesc::DOMDocument_adoptNode;
 *normalizeDocument = *XML::Xercesc::DOMDocument_normalizeDocument;
 *getDOMConfiguration = *XML::Xercesc::DOMDocument_getDOMConfiguration;
-sub createEntity {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createEntity(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createDocumentType {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createDocumentType(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createNotation {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createNotation(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createElementNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_createElementNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub toDOMNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_toDOMNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub toDOMDocumentTraversal {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocument_toDOMDocumentTraversal(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*createEntity = *XML::Xercesc::DOMDocument_createEntity;
+*createDocumentType = *XML::Xercesc::DOMDocument_createDocumentType;
+*createNotation = *XML::Xercesc::DOMDocument_createNotation;
+*createElementNS = *XML::Xercesc::DOMDocument_createElementNS;
+*toDOMNode = *XML::Xercesc::DOMDocument_toDOMNode;
+*toDOMDocumentTraversal = *XML::Xercesc::DOMDocument_toDOMDocumentTraversal;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMDocumentFragment ##############
@@ -4460,13 +4582,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMDocumentType ##############
@@ -4479,32 +4601,22 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 
 *getName = *XML::Xercesc::DOMDocumentType_getName;
 sub getEntities {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocumentType_getEntities(@args);
+    my $result = XML::Xercesc::DOMDocumentType_getEntities(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_hash() if wantarray;
-    $DOMNamedNodeMap::OWNER{$result} = 1;
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
 sub getNotations {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMDocumentType_getNotations(@args);
+    my $result = XML::Xercesc::DOMDocumentType_getNotations(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_hash() if wantarray;
-    $DOMNamedNodeMap::OWNER{$result} = 1;
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
 *getPublicId = *XML::Xercesc::DOMDocumentType_getPublicId;
 *getSystemId = *XML::Xercesc::DOMDocumentType_getSystemId;
@@ -4513,13 +4625,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMImplementationLS ##############
@@ -4532,41 +4644,20 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 
 *MODE_SYNCHRONOUS = *XML::Xercesc::DOMImplementationLS_MODE_SYNCHRONOUS;
 *MODE_ASYNCHRONOUS = *XML::Xercesc::DOMImplementationLS_MODE_ASYNCHRONOUS;
-sub createDOMBuilder {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementationLS_createDOMBuilder(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createDOMWriter {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementationLS_createDOMWriter(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createDOMInputSource {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementationLS_createDOMInputSource(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*createDOMBuilder = *XML::Xercesc::DOMImplementationLS_createDOMBuilder;
+*createDOMWriter = *XML::Xercesc::DOMImplementationLS_createDOMWriter;
+*createDOMInputSource = *XML::Xercesc::DOMImplementationLS_createDOMInputSource;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMImplementation ##############
@@ -4578,49 +4669,21 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 
 *hasFeature = *XML::Xercesc::DOMImplementation_hasFeature;
-sub createDocumentType {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementation_createDocumentType(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getInterface {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementation_getInterface(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub createDocument {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementation_createDocument(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getImplementation {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementation_getImplementation(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*createDocumentType = *XML::Xercesc::DOMImplementation_createDocumentType;
+*getInterface = *XML::Xercesc::DOMImplementation_getInterface;
+*createDocument = *XML::Xercesc::DOMImplementation_createDocument;
+*getImplementation = *XML::Xercesc::DOMImplementation_getImplementation;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMElement ##############
@@ -4633,27 +4696,15 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 
 *getTagName = *XML::Xercesc::DOMElement_getTagName;
 *getAttribute = *XML::Xercesc::DOMElement_getAttribute;
-sub getAttributeNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_getAttributeNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getAttributeNode = *XML::Xercesc::DOMElement_getAttributeNode;
 sub getElementsByTagName {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_getElementsByTagName(@args);
+    my $result = XML::Xercesc::DOMElement_getElementsByTagName(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_list() if wantarray;
-    $DOMNodeList::OWNER{$result} = 1; 
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
 sub setAttribute {
     my ($self,$attr,$val) = @_;
@@ -4661,59 +4712,24 @@ sub setAttribute {
     my $result = XML::Xercesc::DOMElement_setAttribute(@_);
     return $result unless ref($result) =~ m[XML::Xerces];
     $XML::Xerces::DOMAttr::OWNER{$result} = 1; 
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result;
 }
-sub setAttributeNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_setAttributeNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub removeAttributeNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_removeAttributeNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*setAttributeNode = *XML::Xercesc::DOMElement_setAttributeNode;
+*removeAttributeNode = *XML::Xercesc::DOMElement_removeAttributeNode;
 *removeAttribute = *XML::Xercesc::DOMElement_removeAttribute;
 *getAttributeNS = *XML::Xercesc::DOMElement_getAttributeNS;
 *setAttributeNS = *XML::Xercesc::DOMElement_setAttributeNS;
 *removeAttributeNS = *XML::Xercesc::DOMElement_removeAttributeNS;
-sub getAttributeNodeNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_getAttributeNodeNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub setAttributeNodeNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_setAttributeNodeNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getAttributeNodeNS = *XML::Xercesc::DOMElement_getAttributeNodeNS;
+*setAttributeNodeNS = *XML::Xercesc::DOMElement_setAttributeNodeNS;
 sub getElementsByTagNameNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMElement_getElementsByTagNameNS(@args);
+    my $result = XML::Xercesc::DOMElement_getElementsByTagNameNS(@_);
     unless (defined $result) {
       return () if wantarray;
       return undef; # if *not* wantarray
     }
     return $result->to_list() if wantarray;
-    $DOMNodeList::OWNER{$result} = 1; 
-
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return $result; # if *not* wantarray
 }
 *hasAttribute = *XML::Xercesc::DOMElement_hasAttribute;
 *hasAttributeNS = *XML::Xercesc::DOMElement_hasAttributeNS;
@@ -4725,13 +4741,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMEntity ##############
@@ -4755,13 +4771,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMEntityReference ##############
@@ -4776,13 +4792,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMNamedNodeMap ##############
@@ -4793,74 +4809,25 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub setNamedItem {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_setNamedItem(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub item {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_item(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getNamedItem {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_getNamedItem(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*setNamedItem = *XML::Xercesc::DOMNamedNodeMap_setNamedItem;
+*item = *XML::Xercesc::DOMNamedNodeMap_item;
+*getNamedItem = *XML::Xercesc::DOMNamedNodeMap_getNamedItem;
 *getLength = *XML::Xercesc::DOMNamedNodeMap_getLength;
-sub removeNamedItem {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_removeNamedItem(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getNamedItemNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_getNamedItemNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub setNamedItemNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_setNamedItemNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub removeNamedItemNS {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNamedNodeMap_removeNamedItemNS(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*removeNamedItem = *XML::Xercesc::DOMNamedNodeMap_removeNamedItem;
+*getNamedItemNS = *XML::Xercesc::DOMNamedNodeMap_getNamedItemNS;
+*setNamedItemNS = *XML::Xercesc::DOMNamedNodeMap_setNamedItemNS;
+*removeNamedItemNS = *XML::Xercesc::DOMNamedNodeMap_removeNamedItemNS;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMNodeList ##############
@@ -4871,26 +4838,19 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub item {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMNodeList_item(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*item = *XML::Xercesc::DOMNodeList_item;
 *getLength = *XML::Xercesc::DOMNodeList_getLength;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMNotation ##############
@@ -4907,13 +4867,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMProcessingInstruction ##############
@@ -4931,13 +4891,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMBuilder ##############
@@ -4959,7 +4919,8 @@ sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::DOMBuilder::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -4971,7 +4932,8 @@ sub setErrorHandler {
 sub setEntityResolver {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::DOMBuilder::OWNER{$self}->{__ENTITY_RESOLVER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlEntityResolverHandler->new($handler);
@@ -4983,51 +4945,16 @@ sub setEntityResolver {
 *setFeature = *XML::Xercesc::DOMBuilder_setFeature;
 *getFeature = *XML::Xercesc::DOMBuilder_getFeature;
 *canSetFeature = *XML::Xercesc::DOMBuilder_canSetFeature;
-sub parse {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMBuilder_parse(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub parseURI {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMBuilder_parseURI(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*parse = *XML::Xercesc::DOMBuilder_parse;
+*parseURI = *XML::Xercesc::DOMBuilder_parseURI;
 *parseWithContext = *XML::Xercesc::DOMBuilder_parseWithContext;
 *getProperty = *XML::Xercesc::DOMBuilder_getProperty;
 *setProperty = *XML::Xercesc::DOMBuilder_setProperty;
 *release = *XML::Xercesc::DOMBuilder_release;
 *resetDocumentPool = *XML::Xercesc::DOMBuilder_resetDocumentPool;
-sub loadGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMBuilder_loadGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMBuilder_getGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getRootGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMBuilder_getRootGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*loadGrammar = *XML::Xercesc::DOMBuilder_loadGrammar;
+*getGrammar = *XML::Xercesc::DOMBuilder_getGrammar;
+*getRootGrammar = *XML::Xercesc::DOMBuilder_getRootGrammar;
 *getURIText = *XML::Xercesc::DOMBuilder_getURIText;
 *resetCachedGrammarPool = *XML::Xercesc::DOMBuilder_resetCachedGrammarPool;
 *getSrcOffset = *XML::Xercesc::DOMBuilder_getSrcOffset;
@@ -5035,13 +4962,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMImplementationRegistry ##############
@@ -5051,24 +4978,12 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 @ISA = qw( XML::Xerces );
 %OWNER = ();
 %ITERATORS = ();
-sub getDOMImplementation {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementationRegistry_getDOMImplementation(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getDOMImplementation = *XML::Xercesc::DOMImplementationRegistry_getDOMImplementation;
 *addSource = *XML::Xercesc::DOMImplementationRegistry_addSource;
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_DOMImplementationRegistry(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::DOMImplementationRegistry", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_DOMImplementationRegistry(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
@@ -5076,13 +4991,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMImplementationSource ##############
@@ -5093,25 +5008,18 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %OWNER = ();
 %ITERATORS = ();
 
-sub getDOMImplementation {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMImplementationSource_getDOMImplementation(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getDOMImplementation = *XML::Xercesc::DOMImplementationSource_getDOMImplementation;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMInputSource ##############
@@ -5138,13 +5046,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMLocator ##############
@@ -5158,14 +5066,7 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *getLineNumber = *XML::Xercesc::DOMLocator_getLineNumber;
 *getColumnNumber = *XML::Xercesc::DOMLocator_getColumnNumber;
 *getOffset = *XML::Xercesc::DOMLocator_getOffset;
-sub getErrorNode {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMLocator_getErrorNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getErrorNode = *XML::Xercesc::DOMLocator_getErrorNode;
 *getURI = *XML::Xercesc::DOMLocator_getURI;
 *setLineNumber = *XML::Xercesc::DOMLocator_setLineNumber;
 *setColumnNumber = *XML::Xercesc::DOMLocator_setColumnNumber;
@@ -5176,13 +5077,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMWriter ##############
@@ -5202,7 +5103,8 @@ sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::DOMWriter::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -5215,48 +5117,33 @@ sub setErrorHandler {
 *getEncoding = *XML::Xercesc::DOMWriter_getEncoding;
 *getNewLine = *XML::Xercesc::DOMWriter_getNewLine;
 *getErrorHandler = *XML::Xercesc::DOMWriter_getErrorHandler;
-sub getFilter {
-    my @args = @_;
-    my $result = XML::Xercesc::DOMWriter_getFilter(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getFilter = *XML::Xercesc::DOMWriter_getFilter;
 sub writeNode {
     my @args = @_;
     if ($args[2]->isa('XML::Xerces::DOMDocument')) {
       $args[2] = $args[2]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMWriter_writeNode(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMWriter_writeNode(@args);
 }
 sub writeToString {
     my @args = @_;
     if ($args[1]->isa('XML::Xerces::DOMDocument')) {
       $args[1] = $args[1]->toDOMNode();
     }
-    my $result = XML::Xercesc::DOMWriter_writeToString(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+    return XML::Xercesc::DOMWriter_writeToString(@args);
 }
 *release = *XML::Xercesc::DOMWriter_release;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::DOMWriterFilter ##############
@@ -5274,13 +5161,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::AbstractDOMParser ##############
@@ -5295,30 +5182,16 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 *Val_Auto = *XML::Xercesc::AbstractDOMParser_Val_Auto;
 
 *reset = *XML::Xercesc::AbstractDOMParser_reset;
-sub adoptDocument {
-    my @args = @_;
-    my $result = XML::Xercesc::AbstractDOMParser_adoptDocument(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*adoptDocument = *XML::Xercesc::AbstractDOMParser_adoptDocument;
+# hold a reference to the parser internally, so that the
+# document can exist after the parser has gone out of scope
 sub getDocument {
-    my @args = @_;
-    my $result = XML::Xercesc::AbstractDOMParser_getDocument(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
+  my ($self) = @_;
+  my $result = XML::Xercesc::AbstractDOMParser_getDocument($self);
+  $XML::Xerces::DOMDocument::OWNER{$result}->{__PARSER} = $self;
+  return $result;
 }
-sub getValidator {
-    my @args = @_;
-    my $result = XML::Xercesc::AbstractDOMParser_getValidator(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getValidator = *XML::Xercesc::AbstractDOMParser_getValidator;
 *getValidationScheme = *XML::Xercesc::AbstractDOMParser_getValidationScheme;
 *getDoSchema = *XML::Xercesc::AbstractDOMParser_getDoSchema;
 *getValidationSchemaFullChecking = *XML::Xercesc::AbstractDOMParser_getValidationSchemaFullChecking;
@@ -5361,13 +5234,13 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::XercesDOMParser ##############
@@ -5379,13 +5252,8 @@ use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_XercesDOMParser(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::XercesDOMParser", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_XercesDOMParser(@_);
+    bless $self, $pkg if defined($self);
 }
 
 sub DESTROY {
@@ -5400,47 +5268,20 @@ sub DESTROY {
     }
 }
 
-sub getErrorHandler {
-    my @args = @_;
-    my $result = XML::Xercesc::XercesDOMParser_getErrorHandler(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getEntityResolver {
-    my @args = @_;
-    my $result = XML::Xercesc::XercesDOMParser_getEntityResolver(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getErrorHandler = *XML::Xercesc::XercesDOMParser_getErrorHandler;
+*getEntityResolver = *XML::Xercesc::XercesDOMParser_getEntityResolver;
 *isCachingGrammarFromParse = *XML::Xercesc::XercesDOMParser_isCachingGrammarFromParse;
 *isUsingCachedGrammarInParse = *XML::Xercesc::XercesDOMParser_isUsingCachedGrammarInParse;
-sub getGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::XercesDOMParser_getGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
-sub getRootGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::XercesDOMParser_getRootGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*getGrammar = *XML::Xercesc::XercesDOMParser_getGrammar;
+*getRootGrammar = *XML::Xercesc::XercesDOMParser_getRootGrammar;
 *getURIText = *XML::Xercesc::XercesDOMParser_getURIText;
 *getSrcOffset = *XML::Xercesc::XercesDOMParser_getSrcOffset;
 sub setErrorHandler {
   my ($self,$handler) = @_;
   my $retval;
   my $callback = $XML::Xerces::XercesDOMParser::OWNER{$self}->{__ERROR_HANDLER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $retval = $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlErrorCallbackHandler->new($handler);
@@ -5452,7 +5293,8 @@ sub setErrorHandler {
 sub setEntityResolver {
   my ($self,$handler) = @_;
   my $callback = $XML::Xerces::XercesDOMParser::OWNER{$self}->{__ENTITY_RESOLVER};
-  if (defined $callback) {
+#  if (defined $callback) {
+  if (0) {
     $callback->set_callback_obj($handler);
   } else {
     $callback = XML::Xerces::PerlEntityResolverHandler->new($handler);
@@ -5465,82 +5307,94 @@ sub setEntityResolver {
 *resetDocumentPool = *XML::Xercesc::XercesDOMParser_resetDocumentPool;
 *error = *XML::Xercesc::XercesDOMParser_error;
 *resetErrors = *XML::Xercesc::XercesDOMParser_resetErrors;
-sub loadGrammar {
-    my @args = @_;
-    my $result = XML::Xercesc::XercesDOMParser_loadGrammar(@args);
-    return $result unless UNIVERSAL::isa($result,'XML::Xerces');
-    my %resulthash;
-    tie %resulthash, ref($result), $result;
-    return bless \%resulthash, ref($result);
-}
+*loadGrammar = *XML::Xercesc::XercesDOMParser_loadGrammar;
 *resetCachedGrammarPool = *XML::Xercesc::XercesDOMParser_resetCachedGrammarPool;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
+
+
+############# Class : XML::Xerces::PerlCallbackHandler ##############
+
+package XML::Xerces::PerlCallbackHandler;
+use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
+@ISA = qw( XML::Xerces );
+%OWNER = ();
+%ITERATORS = ();
+sub new {
+    my $pkg = shift;
+    my $self = XML::Xercesc::new_PerlCallbackHandler(@_);
+    bless $self, $pkg if defined($self);
+}
+
+
+*type = *XML::Xercesc::PerlCallbackHandler_type;
+*set_callback_obj = *XML::Xercesc::PerlCallbackHandler_set_callback_obj;
+sub DISOWN {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    delete $OWNER{$ptr};
+}
+
+sub ACQUIRE {
+    my $self = shift;
+    my $ptr = tied(%$self);
+    $OWNER{$ptr} = 1;
+}
 
 
 ############# Class : XML::Xerces::PerlErrorCallbackHandler ##############
 
 package XML::Xerces::PerlErrorCallbackHandler;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces XML::Xerces::ErrorHandler );
+@ISA = qw( XML::Xerces XML::Xerces::ErrorHandler XML::Xerces::PerlCallbackHandler );
 %OWNER = ();
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_PerlErrorCallbackHandler(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::PerlErrorCallbackHandler", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_PerlErrorCallbackHandler(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-*set_callback_obj = *XML::Xercesc::PerlErrorCallbackHandler_set_callback_obj;
+*type = *XML::Xercesc::PerlErrorCallbackHandler_type;
 *resetErrors = *XML::Xercesc::PerlErrorCallbackHandler_resetErrors;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::PerlDocumentCallbackHandler ##############
 
 package XML::Xerces::PerlDocumentCallbackHandler;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces XML::Xerces::DocumentHandler );
+@ISA = qw( XML::Xerces XML::Xerces::DocumentHandler XML::Xerces::PerlCallbackHandler );
 %OWNER = ();
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_PerlDocumentCallbackHandler(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::PerlDocumentCallbackHandler", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_PerlDocumentCallbackHandler(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-*set_callback_obj = *XML::Xercesc::PerlDocumentCallbackHandler_set_callback_obj;
+*type = *XML::Xercesc::PerlDocumentCallbackHandler_type;
 *characters = *XML::Xercesc::PerlDocumentCallbackHandler_characters;
 *processingInstruction = *XML::Xercesc::PerlDocumentCallbackHandler_processingInstruction;
 *setDocumentLocator = *XML::Xercesc::PerlDocumentCallbackHandler_setDocumentLocator;
@@ -5548,35 +5402,30 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::PerlContentCallbackHandler ##############
 
 package XML::Xerces::PerlContentCallbackHandler;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces XML::Xerces::ContentHandler );
+@ISA = qw( XML::Xerces XML::Xerces::ContentHandler XML::Xerces::PerlCallbackHandler );
 %OWNER = ();
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_PerlContentCallbackHandler(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::PerlContentCallbackHandler", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_PerlContentCallbackHandler(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-*set_callback_obj = *XML::Xercesc::PerlContentCallbackHandler_set_callback_obj;
+*type = *XML::Xercesc::PerlContentCallbackHandler_type;
 *characters = *XML::Xercesc::PerlContentCallbackHandler_characters;
 *processingInstruction = *XML::Xercesc::PerlContentCallbackHandler_processingInstruction;
 *setDocumentLocator = *XML::Xercesc::PerlContentCallbackHandler_setDocumentLocator;
@@ -5587,79 +5436,69 @@ sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::PerlEntityResolverHandler ##############
 
 package XML::Xerces::PerlEntityResolverHandler;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces XML::Xerces::EntityResolver );
+@ISA = qw( XML::Xerces XML::Xerces::EntityResolver XML::Xerces::PerlCallbackHandler );
 %OWNER = ();
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_PerlEntityResolverHandler(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::PerlEntityResolverHandler", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_PerlEntityResolverHandler(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-*set_callback_obj = *XML::Xercesc::PerlEntityResolverHandler_set_callback_obj;
+*type = *XML::Xercesc::PerlEntityResolverHandler_type;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 ############# Class : XML::Xerces::PerlNodeFilterCallbackHandler ##############
 
 package XML::Xerces::PerlNodeFilterCallbackHandler;
 use vars qw(@ISA %OWNER %ITERATORS %BLESSEDMEMBERS);
-@ISA = qw( XML::Xerces XML::Xerces::DOMNodeFilter );
+@ISA = qw( XML::Xerces XML::Xerces::DOMNodeFilter XML::Xerces::PerlCallbackHandler );
 %OWNER = ();
 %ITERATORS = ();
 sub new {
     my $pkg = shift;
-    my @args = @_;
-    my $self = XML::Xercesc::new_PerlNodeFilterCallbackHandler(@args);
-    return undef if (!defined($self));
-    $OWNER{$self} = 1;
-    my %retval;
-    tie %retval, "XML::Xerces::PerlNodeFilterCallbackHandler", $self;
-    return bless \%retval, $pkg;
+    my $self = XML::Xercesc::new_PerlNodeFilterCallbackHandler(@_);
+    bless $self, $pkg if defined($self);
 }
 
 
-*set_callback_obj = *XML::Xercesc::PerlNodeFilterCallbackHandler_set_callback_obj;
+*type = *XML::Xercesc::PerlNodeFilterCallbackHandler_type;
 sub DISOWN {
     my $self = shift;
     my $ptr = tied(%$self);
     delete $OWNER{$ptr};
-    };
+}
 
 sub ACQUIRE {
     my $self = shift;
     my $ptr = tied(%$self);
     $OWNER{$ptr} = 1;
-    };
+}
 
 
 # ------- VARIABLE STUBS --------
@@ -5668,6 +5507,10 @@ package XML::Xerces;
 
 *DEBUG_UTF8_OUT = *XML::Xercesc::DEBUG_UTF8_OUT;
 *DEBUG_UTF8_IN = *XML::Xercesc::DEBUG_UTF8_IN;
+*XMLElementDecl_fgInvalidElemId = *XML::Xercesc::XMLElementDecl_fgInvalidElemId;
+*XMLElementDecl_fgPCDataElemId = *XML::Xercesc::XMLElementDecl_fgPCDataElemId;
+*XMLElementDecl_fgPCDataElemName = *XML::Xercesc::XMLElementDecl_fgPCDataElemName;
+*XMLAttDef_fgInvalidAttrId = *XML::Xercesc::XMLAttDef_fgInvalidAttrId;
 *XMLUni_fgAnyString = *XML::Xercesc::XMLUni_fgAnyString;
 *XMLUni_fgAttListString = *XML::Xercesc::XMLUni_fgAttListString;
 *XMLUni_fgCommentString = *XML::Xercesc::XMLUni_fgCommentString;
@@ -5857,4 +5700,10 @@ package XML::Xerces;
 *XMLUni_fgDOMWRTWhitespaceInElementContent = *XML::Xercesc::XMLUni_fgDOMWRTWhitespaceInElementContent;
 *XMLUni_fgDOMWRTBOM = *XML::Xercesc::XMLUni_fgDOMWRTBOM;
 *XMLUni_fgXercescDefaultLocale = *XML::Xercesc::XMLUni_fgXercescDefaultLocale;
+*PERLCALLBACKHANDLER_BASE_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_BASE_TYPE;
+*PERLCALLBACKHANDLER_ERROR_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_ERROR_TYPE;
+*PERLCALLBACKHANDLER_ENTITY_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_ENTITY_TYPE;
+*PERLCALLBACKHANDLER_NODE_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_NODE_TYPE;
+*PERLCALLBACKHANDLER_CONTENT_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_CONTENT_TYPE;
+*PERLCALLBACKHANDLER_DOCUMENT_TYPE = *XML::Xercesc::PERLCALLBACKHANDLER_DOCUMENT_TYPE;
 1;

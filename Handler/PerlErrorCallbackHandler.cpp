@@ -19,19 +19,19 @@ PerlErrorCallbackHandler::PerlErrorCallbackHandler(SV *obj)
     set_callback_obj(obj);
 }
 
-SV*
-PerlErrorCallbackHandler::set_callback_obj(SV* object) {
-    SV *oldRef = &PL_sv_undef;	// default to 'undef'
-    if (callbackObj != NULL) {
-	oldRef = callbackObj;
-#if defined(PERL_VERSION) && PERL_VERSION >= 8
-//	SvREFCNT_dec(oldRef);
-#endif
-    }
-    SvREFCNT_inc(object);
-    callbackObj = object;
-    return oldRef;
-}
+// SV*
+// PerlErrorCallbackHandler::set_callback_obj(SV* object) {
+//     SV *oldRef = &PL_sv_undef;	// default to 'undef'
+//     if (callbackObj != NULL) {
+// 	oldRef = callbackObj;
+// #if defined(PERL_VERSION) && PERL_VERSION >= 8
+// //	SvREFCNT_dec(oldRef);
+// #endif
+//     }
+//     SvREFCNT_inc(object);
+//     callbackObj = object;
+//     return oldRef;
+// }
 
 void
 PerlErrorCallbackHandler::warning(const SAXParseException& exception) {
@@ -97,6 +97,8 @@ PerlErrorCallbackHandler::fatalError(const SAXParseException& exception) {
     if (!callbackObj) {
 	die("Received FatalError and no ErrorHandler was set");
     }
+//    printf("<FatalError: for this: 0x%.4X>\n", this);
+//    printf("<FatalError: using callback object 0x%.4X>\n", callbackObj);
 
     dSP;
 

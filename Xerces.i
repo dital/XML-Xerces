@@ -28,12 +28,24 @@
 #include "xercesc/framework/MemBufInputSource.hpp"
 #include "xercesc/framework/StdInInputSource.hpp"
 #include "xercesc/framework/URLInputSource.hpp"
+#include "xercesc/util/NameIdPool.hpp"
+#include "xercesc/util/XMLEnumerator.hpp"
 #include "xercesc/framework/XMLValidator.hpp"
+#include "xercesc/validators/common/Grammar.hpp"
+#include "xercesc/validators/DTD/DTDAttDef.hpp"
+#include "xercesc/validators/DTD/DTDAttDefList.hpp"
+#include "xercesc/validators/DTD/DTDGrammar.hpp"
+#include "xercesc/validators/DTD/DTDValidator.hpp"
+#include "xercesc/validators/schema/SchemaGrammar.hpp"
+#include "xercesc/validators/schema/SchemaValidator.hpp"
+#include "xercesc/validators/schema/SchemaAttDefList.hpp"
+#include "xercesc/validators/schema/SchemaAttDef.hpp"
 #include "xercesc/framework/XMLFormatter.hpp"
 #include "xercesc/framework/MemBufFormatTarget.hpp"
+#include "xercesc/framework/LocalFileFormatTarget.hpp"
 #include "xercesc/framework/StdOutFormatTarget.hpp"
-#include "xercesc/validators/common/Grammar.hpp"
 
+#include "PerlCallbackHandler.hpp"
 #include "PerlErrorCallbackHandler.hpp"
 #include "PerlDocumentCallbackHandler.hpp"
 #include "PerlContentCallbackHandler.hpp"
@@ -212,6 +224,9 @@ bool DEBUG_UTF8_IN;
 %ignore openFile(const XMLCh* const);
 
 %include "xercesc/util/PlatformUtils.hpp"
+%ignore operator new;
+%ignore operator delete;
+%import "xercesc/util/XMemory.hpp"
 
 
 // XERCES_CPP_NAMESPACE_BEGIN
@@ -348,21 +363,91 @@ bool DEBUG_UTF8_IN;
 %include "xercesc/util/XMLExceptMsgs.hpp"
 %include "xercesc/util/XMLException.hpp"
 
-// in case someone wants to re-use validators
+%ignore getNotationDecl(const XMLCh* const) const;
+%ignore getEntityDecl(const XMLCh* const) const;
+%ignore getEntityDeclPool() const;
+%ignore getElemDecl(const unsigned int) const;
+%ignore getElemDecl(const unsigned int,
+		    const XMLCh* const,
+		    const XMLCh* const,
+		    unsigned int) const;
+
+
+
+%ignore getContentSpec() const;
+%ignore getAttDef(const XMLCh* const) const;
+%ignore getBaseName() const;
+%ignore getElementName() const;
+%rename(ignore_me_for_now) XERCES_CPP_NAMESPACE::DTDEntityDecl(const XMLCh* const, 
+							       const XMLCh, 
+							       const bool,
+							       const bool);
+%ignore findAttDef(const unsigned long,
+		   const XMLCh* const) const;
+%ignore findAttDef(const XMLCh* const,
+		   const XMLCh* const) const;
+%rename(ignore_me_for_now) findAttDef(const unsigned long,
+				      const XMLCh* const);
+%ignore XERCES_CPP_NAMESPACE::SchemaElementDecl::getAttDef(const XMLCh* const, const int) const;
+%ignore XERCES_CPP_NAMESPACE::SchemaElementDecl::getAttWildCard() const;
+
+//
+// For the schema enumeration support
+//
+
+// for now this have no methods we need, and are only imported
+%import "xercesc/framework/XMLAttr.hpp"
+%import "xercesc/framework/XMLContentModel.hpp"
+
+// these have getter methods and must be included
+%include "xercesc/framework/XMLElementDecl.hpp"
+%include "xercesc/framework/XMLEntityDecl.hpp"
+%include "xercesc/framework/XMLNotationDecl.hpp"
+%include "xercesc/framework/XMLAttDefList.hpp"
+%include "xercesc/framework/XMLAttDef.hpp"
 %include "xercesc/framework/XMLValidator.hpp"
+%include "xercesc/validators/common/Grammar.hpp"
+
+// these are needed for both the DTD and Schema templates
+%import "xercesc/util/XMLEnumerator.hpp"
+
+// these are needed for the DTD templates
+%import "xercesc/util/NameIdPool.hpp"
+
+%include "xercesc/validators/DTD/DTDElementDecl.hpp"
+%template()  XERCES_CPP_NAMESPACE::XMLEnumerator<DTDElementDecl>;
+%template()  XERCES_CPP_NAMESPACE::NameIdPool<DTDElementDecl>;
+%template(DTDElementDeclEnumerator)  XERCES_CPP_NAMESPACE::NameIdPoolEnumerator<DTDElementDecl>;
+
+%include "xercesc/validators/DTD/DTDEntityDecl.hpp"
+%template()  XERCES_CPP_NAMESPACE::XMLEnumerator<DTDEntityDecl>;
+%template()  XERCES_CPP_NAMESPACE::NameIdPool<DTDEntityDecl>;
+%template(DTDEntityDeclEnumerator)  XERCES_CPP_NAMESPACE::NameIdPoolEnumerator<DTDEntityDecl>;
+
+%include "xercesc/validators/DTD/DTDAttDefList.hpp"
+%include "xercesc/validators/DTD/DTDAttDef.hpp"
+%include "xercesc/validators/DTD/DTDGrammar.hpp"
+%include "xercesc/validators/DTD/DTDValidator.hpp"
+
+// these are needed for the templates for schema
+%import "xercesc/util/RefHash3KeysIdPool.hpp"
+
+%include "xercesc/validators/schema/SchemaElementDecl.hpp"
+%template()  XERCES_CPP_NAMESPACE::XMLEnumerator<SchemaElementDecl>;
+%template()  XERCES_CPP_NAMESPACE::RefHash3KeysTableBucketElem<SchemaElementDecl>;
+%template()  XERCES_CPP_NAMESPACE::RefHash3KeysIdPool<SchemaElementDecl>;
+%template(SchemaElementDeclEnumerator)  XERCES_CPP_NAMESPACE::RefHash3KeysIdPoolEnumerator<SchemaElementDecl>;
+
+%include "xercesc/validators/schema/SchemaGrammar.hpp"
+%include "xercesc/validators/schema/SchemaValidator.hpp"
+%include "xercesc/validators/schema/SchemaAttDefList.hpp"
+%include "xercesc/validators/schema/SchemaAttDef.hpp"
 
 // I will wait until someone asks for these scanner classes
-// %include "xercesc/framework/XMLAttDef.hpp"
-// %include "xercesc/framework/XMLAttDefList.hpp"
-// %include "xercesc/framework/XMLAttr.hpp"
-// %include "xercesc/framework/XMLContentModel.hpp"
-// %include "xercesc/framework/XMLElementDecl.hpp"
-// %include "xercesc/framework/XMLEntityDecl.hpp"
-// %include "xercesc/framework/XMLNotationDecl.hpp"
-// %include "xercesc/framework/XMLEntityHandler.hpp"
 // %include "xercesc/framework/XMLErrorCodes.hpp"
 // %include "xercesc/framework/XMLValidityCodes.hpp"
 // %include "xercesc/framework/XMLDocumentHandler.hpp"
+// %import "xercesc/framework/XMLEntityHandler.hpp"
 
 /* 
  * FOR SAX 1.0 API 
@@ -402,7 +487,8 @@ bool DEBUG_UTF8_IN;
  */
 %include "xercesc/sax/InputSource.hpp"
 
-%ignore MemBufInputSource(const XMLByte* const, const unsigned int, const char* const,const bool);
+%ignore MemBufInputSource(const XMLByte* const, const unsigned int, const char* const,
+			  const bool, MemoryManager* const);
 %include "xercesc/framework/MemBufInputSource.hpp"
 %include "xercesc/framework/StdInInputSource.hpp"
 
@@ -424,7 +510,200 @@ bool DEBUG_UTF8_IN;
 //
 %include "xercesc/framework/XMLFormatter.hpp"
 %include "xercesc/framework/MemBufFormatTarget.hpp"
+%include "xercesc/framework/LocalFileFormatTarget.hpp"
 %include "xercesc/framework/StdOutFormatTarget.hpp"
+
+// ensure that Perl treats these variables as constants
+%immutable fgAnyString;
+%immutable fgAttListString;
+%immutable fgCommentString;
+%immutable fgCDATAString;
+%immutable fgDefaultString;
+%immutable fgDocTypeString;
+%immutable fgEBCDICEncodingString;
+%immutable fgElemString;
+%immutable fgEmptyString;
+%immutable fgEncodingString;
+%immutable fgEntitString;
+%immutable fgEntityString;
+%immutable fgEntitiesString;
+%immutable fgEnumerationString;
+%immutable fgExceptDomain;
+%immutable fgFixedString;
+%immutable fgIBM037EncodingString;
+%immutable fgIBM037EncodingString2;
+%immutable fgIBM1140EncodingString;
+%immutable fgIBM1140EncodingString2;
+%immutable fgIBM1140EncodingString3;
+%immutable fgIBM1140EncodingString4;
+%immutable fgIESString;
+%immutable fgIDString;
+%immutable fgIDRefString;
+%immutable fgIDRefsString;
+%immutable fgImpliedString;
+%immutable fgIgnoreString;
+%immutable fgIncludeString;
+%immutable fgISO88591EncodingString;
+%immutable fgISO88591EncodingString2;
+%immutable fgISO88591EncodingString3;
+%immutable fgISO88591EncodingString4;
+%immutable fgISO88591EncodingString5;
+%immutable fgISO88591EncodingString6;
+%immutable fgISO88591EncodingString7;
+%immutable fgISO88591EncodingString8;
+%immutable fgISO88591EncodingString9;
+%immutable fgISO88591EncodingString10;
+%immutable fgISO88591EncodingString11;
+%immutable fgISO88591EncodingString12;
+%immutable fgLocalHostString;
+%immutable fgNoString;
+%immutable fgNotationString;
+%immutable fgNDATAString;
+%immutable fgNmTokenString;
+%immutable fgNmTokensString;
+%immutable fgPCDATAString;
+%immutable fgPIString;
+%immutable fgPubIDString;
+%immutable fgRefString;
+%immutable fgRequiredString;
+%immutable fgStandaloneString;
+%immutable fgVersion1_0;
+%immutable fgVersion1_1;
+%immutable fgSysIDString;
+%immutable fgUnknownURIName;
+%immutable fgUCS4EncodingString;
+%immutable fgUCS4EncodingString2;
+%immutable fgUCS4EncodingString3;
+%immutable fgUCS4BEncodingString;
+%immutable fgUCS4BEncodingString2;
+%immutable fgUCS4LEncodingString;
+%immutable fgUCS4LEncodingString2;
+%immutable fgUSASCIIEncodingString;
+%immutable fgUSASCIIEncodingString2;
+%immutable fgUSASCIIEncodingString3;
+%immutable fgUSASCIIEncodingString4;
+%immutable fgUTF8EncodingString;
+%immutable fgUTF8EncodingString2;
+%immutable fgUTF16EncodingString;
+%immutable fgUTF16EncodingString2;
+%immutable fgUTF16EncodingString3;
+%immutable fgUTF16EncodingString4;
+%immutable fgUTF16EncodingString5;
+%immutable fgUTF16BEncodingString;
+%immutable fgUTF16BEncodingString2;
+%immutable fgUTF16LEncodingString;
+%immutable fgUTF16LEncodingString2;
+%immutable fgVersionString;
+%immutable fgValidityDomain;
+%immutable fgWin1252EncodingString;
+%immutable fgXMLChEncodingString;
+%immutable fgXMLDOMMsgDomain;
+%immutable fgXMLString;
+%immutable fgXMLStringSpace;
+%immutable fgXMLStringHTab;
+%immutable fgXMLStringCR;
+%immutable fgXMLStringLF;
+%immutable fgXMLStringSpaceU;
+%immutable fgXMLStringHTabU;
+%immutable fgXMLStringCRU;
+%immutable fgXMLStringLFU;
+%immutable fgXMLDeclString;
+%immutable fgXMLDeclStringSpace;
+%immutable fgXMLDeclStringHTab;
+%immutable fgXMLDeclStringLF;
+%immutable fgXMLDeclStringCR;
+%immutable fgXMLDeclStringSpaceU;
+%immutable fgXMLDeclStringHTabU;
+%immutable fgXMLDeclStringLFU;
+%immutable fgXMLDeclStringCRU;
+%immutable fgXMLNSString;
+%immutable fgXMLNSColonString;
+%immutable fgXMLNSURIName;
+%immutable fgXMLErrDomain;
+%immutable fgXMLURIName;
+%immutable fgYesString;
+%immutable fgZeroLenString;
+%immutable fgDTDEntityString;
+%immutable fgAmp;
+%immutable fgLT;
+%immutable fgGT;
+%immutable fgQuot;
+%immutable fgApos;
+%immutable fgWFXMLScanner;
+%immutable fgIGXMLScanner;
+%immutable fgSGXMLScanner;
+%immutable fgDGXMLScanner;
+%immutable fgArrayIndexOutOfBoundsException_Name;
+%immutable fgEmptyStackException_Name;
+%immutable fgIllegalArgumentException_Name;
+%immutable fgInvalidCastException_Name;
+%immutable fgIOException_Name;
+%immutable fgNoSuchElementException_Name;
+%immutable fgNullPointerException_Name;
+%immutable fgXMLPlatformUtilsException_Name;
+%immutable fgRuntimeException_Name;
+%immutable fgTranscodingException_Name;
+%immutable fgUnexpectedEOFException_Name;
+%immutable fgUnsupportedEncodingException_Name;
+%immutable fgUTFDataFormatException_Name;
+%immutable fgNetAccessorException_Name;
+%immutable fgMalformedURLException_Name;
+%immutable fgNumberFormatException_Name;
+%immutable fgParseException_Name;
+%immutable fgInvalidDatatypeFacetException_Name;
+%immutable fgInvalidDatatypeValueException_Name;
+%immutable fgSchemaDateTimeException_Name;
+%immutable fgXPathException_Name;
+%immutable fgNegINFString;
+%immutable fgNegZeroString;
+%immutable fgPosZeroString;
+%immutable fgPosINFString;
+%immutable fgNaNString;
+%immutable fgEString;
+%immutable fgZeroString;
+%immutable fgNullString;
+%immutable fgXercesDynamic;
+%immutable fgXercesSchema;
+%immutable fgXercesSchemaFullChecking;
+%immutable fgXercesSchemaExternalSchemaLocation;
+%immutable fgXercesSchemaExternalNoNameSpaceSchemaLocation;
+%immutable fgXercesSecurityManager;
+%immutable fgXercesLoadExternalDTD;
+%immutable fgXercesContinueAfterFatalError;
+%immutable fgXercesValidationErrorAsFatal;
+%immutable fgXercesUserAdoptsDOMDocument;
+%immutable fgXercesCacheGrammarFromParse;
+%immutable fgXercesUseCachedGrammarInParse;
+%immutable fgXercesScannerName;
+%immutable fgXercesCalculateSrcOfs;
+%immutable fgXercesStandardUriConformant;
+%immutable fgSAX2CoreValidation;
+%immutable fgSAX2CoreNameSpaces;
+%immutable fgSAX2CoreNameSpacePrefixes;
+%immutable fgDOMCanonicalForm;
+%immutable fgDOMCDATASections;
+%immutable fgDOMComments;
+%immutable fgDOMCharsetOverridesXMLEncoding;
+%immutable fgDOMDatatypeNormalization;
+%immutable fgDOMEntities;
+%immutable fgDOMInfoset;
+%immutable fgDOMNamespaces;
+%immutable fgDOMNamespaceDeclarations;
+%immutable fgDOMSupportedMediatypesOnly;
+%immutable fgDOMValidateIfSchema;
+%immutable fgDOMValidation;
+%immutable fgDOMWhitespaceInElementContent;
+%immutable fgDOMWRTCanonicalForm;
+%immutable fgDOMWRTDiscardDefaultContent;
+%immutable fgDOMWRTEntities;
+%immutable fgDOMWRTFormatPrettyPrint;
+%immutable fgDOMWRTNormalizeCharacters;
+%immutable fgDOMWRTSplitCdataSections;
+%immutable fgDOMWRTValidation;
+%immutable fgDOMWRTWhitespaceInElementContent;
+%immutable fgDOMWRTBOM;
+%immutable fgXercescDefaultLocale;
+
 
 // Unicode string constants for XML Formatter
 %include "xercesc/util/XMLUni.hpp"
@@ -457,6 +736,8 @@ bool DEBUG_UTF8_IN;
 %ignore XERCES_CPP_NAMESPACE::XMLScanner::getEntityHandler();
 %ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorReporter() const;
 %ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorReporter();
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorHandler() const;
+%ignore XERCES_CPP_NAMESPACE::XMLScanner::getErrorHandler();
 %ignore XERCES_CPP_NAMESPACE::XMLScanner::getExitOnFirstFatal() const;
 %ignore XERCES_CPP_NAMESPACE::XMLScanner::getValidationConstraintFatal() const;
 %ignore XERCES_CPP_NAMESPACE::XMLScanner::getIDRefList();
@@ -605,9 +886,10 @@ SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getProperty)
 %include "xercesc/sax2/SAX2XMLReader.hpp"
 %include "xercesc/sax2/XMLReaderFactory.hpp"
 
+%ignore XERCES_CPP_NAMESPACE::SAXParser::getErrorHandler() const;
+%ignore XERCES_CPP_NAMESPACE::SAXParser::getEntityResolver() const;
+%ignore XERCES_CPP_NAMESPACE::SAXParser::getDocumentHandler() const;
 %include "xercesc/parsers/SAXParser.hpp"
-
-%include "xercesc/validators/common/Grammar.hpp"
 
 /* 
  * DOM
@@ -666,6 +948,10 @@ SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getProperty)
 %include "xercesc/dom/DOMNotation.hpp"
 %include "xercesc/dom/DOMProcessingInstruction.hpp"
 
+%ignore XERCES_CPP_NAMESPACE::DOMBuilder::getErrorHandler() const;
+%ignore XERCES_CPP_NAMESPACE::DOMBuilder::getEntityResolver() const;
+%ignore XERCES_CPP_NAMESPACE::DOMBuilder::getFilter() const;
+
 // Introduced in DOM Level 3
 // Experimental - subject to change
 %include "xercesc/dom/DOMBuilder.hpp"
@@ -713,7 +999,7 @@ SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getProperty)
 %ignore PerlErrorCallbackHandler::error(const SAXParseException&);
 %ignore PerlErrorCallbackHandler::fatalError(const SAXParseException&);
 
-%import "PerlCallbackHandler.hpp"
+%include "PerlCallbackHandler.hpp"
 %include "PerlErrorCallbackHandler.hpp"
 %include "PerlDocumentCallbackHandler.hpp"
 %include "PerlContentCallbackHandler.hpp"
@@ -764,5 +1050,4 @@ SAXEXCEPTION(XERCES_CPP_NAMESPACE::SAX2XMLReader::getProperty)
  * Include extra verbatim Perl code immediately after Module header
  */
 %pragma(perl5) code="package XML::Xerces; 
-use vars qw($VERSION @EXPORT);
-$VERSION = q[2.3.0-1];";
+use vars qw($VERSION @EXPORT);"

@@ -9,11 +9,10 @@
 XERCES_CPP_NAMESPACE_USE
 
 class PerlEntityResolverHandler: public EntityResolver
-//			       , public  PerlCallbackHandler
+			       , public PerlCallbackHandler
  {
 
 protected:
-    SV *callbackObj;
 
 public:
 
@@ -21,7 +20,7 @@ public:
     PerlEntityResolverHandler(SV *obj);
     ~PerlEntityResolverHandler();
 
-    SV* set_callback_obj(SV*);
+    int type() {return PERLCALLBACKHANDLER_ENTITY_TYPE;}
 
 	// The EntityResolver interface
     InputSource* resolveEntity (const XMLCh* const publicId, 

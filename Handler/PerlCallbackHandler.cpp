@@ -19,15 +19,25 @@ PerlCallbackHandler::PerlCallbackHandler(SV* object) {
     callbackObj = object;
 }
 
-// SV*
-// PerlCallbackHandler::set_callback_obj(SV* object) {
-//     SV *oldRef = &PL_sv_undef;	// default to 'undef'
-//     if (callbackObj != NULL) {
-// 	oldRef = callbackObj;
-// 	SvREFCNT_dec(oldRef);
-//     }
-//     SvREFCNT_inc(object);
-//     callbackObj = object;
-//     return oldRef;
-// }
+PerlCallbackHandler::PerlCallbackHandler(PerlCallbackHandler* handler) {
+    SvREFCNT_inc(callbackObj);
+    handler->callbackObj = callbackObj;
+//     printf("<copy constructor for obj: 0x%.4X, new obj: 0x%.4X>\n", this, handler);
+}
+
+SV*
+PerlCallbackHandler::set_callback_obj(SV* object) {
+    SV *oldRef = &PL_sv_undef;	// default to 'undef'
+//    printf("<setting callback object for this: 0x%.4X>\n", this);
+    if (callbackObj != NULL) {
+	oldRef = callbackObj;
+//	printf("<old callback object 0x%.4X>\n", callbackObj);
+//	SvREFCNT_dec(oldRef);
+    }
+    SvREFCNT_inc(object);
+//    printf("<setting callback object 0x%.4X>\n", object);
+    callbackObj = object;
+//    printf("<new callback object 0x%.4X>\n", callbackObj);
+    return oldRef;
+}
 

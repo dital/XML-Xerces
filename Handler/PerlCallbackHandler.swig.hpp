@@ -2,18 +2,18 @@ class PerlCallbackHandler {
 
 public:
 
-//    PerlCallbackHandler();
-//    PerlCallbackHandler(SV*);
-//    void set_callback_obj(SV*);
+   PerlCallbackHandler();
+   PerlCallbackHandler(SV*);
+   SV* set_callback_obj(SV*);
 };
 
-class PerlNodeFilterCallbackHandler : public IDOM_NodeFilter, public PerlCallbackHandler {
+class PerlNodeFilterCallbackHandler : public DOMNodeFilter, public PerlCallbackHandler {
 
 public:
 
     PerlNodeFilterCallbackHandler();
     PerlNodeFilterCallbackHandler(SV*);
-    void set_callback_obj(SV*);
+//    void set_callback_obj(SV*);
 
 };
 
@@ -23,7 +23,7 @@ public:
 
     PerlDocumentCallbackHandler();
     PerlDocumentCallbackHandler(SV*);
-    void set_callback_obj(SV*);
+//    void set_callback_obj(SV*);
 
 };
 
@@ -33,7 +33,7 @@ public:
 
     PerlContentCallbackHandler();
     PerlContentCallbackHandler(SV*);
-    void set_callback_obj(SV*);
+//    void set_callback_obj(SV*);
 
 };
 
@@ -43,7 +43,7 @@ public:
 
     PerlEntityResolverHandler();
     PerlEntityResolverHandler(SV*);
-    void set_callback_obj(SV*);
+//    void set_callback_obj(SV*);
 
 };
 
@@ -53,7 +53,7 @@ public:
 
     PerlErrorCallbackHandler();
     PerlErrorCallbackHandler(SV*);
-    void set_callback_obj(SV*);
+//    void set_callback_obj(SV*);
 };
 
 

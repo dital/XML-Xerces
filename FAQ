@@ -8,8 +8,10 @@ A. General Info
 ===============
 A.1 Where is the xerces-p-dev mailing list archive
 
-  - A good place for list archives is MARC (http://marc.theaimsgroup.com/). 
-    They archive both xerces-p-dev and xerces-c-dev
+  - Apache now has an EyeBrowse archive of both the xerces-p-dev and
+    xerces-c-dev lists:
+    
+    http://nagoya.apache.org/eyebrowse/SummarizeList?listId=86
 
 A.2 Where can I find documentation for Xerces.pm
 
@@ -38,11 +40,7 @@ B.1 I get an undefined symbol error, __eh_alloc, when I compile
         lib/auto/DynaLoader/DynaLoader.a  libperl.a `cat ext.libs`         \   
         -lm -lcrypt
 
-B.2 How do I build Xerces.pm on architecture Foo
-
-  - see PORTS for details on getting Xerces.pm to build for your system 
-
-B.3 I get iostream errors when I compile
+B.2 I get iostream errors when I compile
 
   - Some gcc installations need -DHAS_BOOL to compile and others will
     fail if it is defined. Trying adding/removing -DHAS_BOOL from
@@ -50,12 +48,10 @@ B.3 I get iostream errors when I compile
 
 C. Unicode Support
 ==================
-C.1 Why do a bunch of tests fail in t/IDOM_Document.t?
+C.1 Why do a bunch of tests fail in t/DOMDocument.t?
 
-  - If they are 206..267, try setting your LC_CTYPE environment
+  - If they are 662..723, try setting your LC_CTYPE environment
     variable to something besides the default value of "C", such as:
-
-C.2 Why do a bunch of tests fail in t/UTF8.t?
 
     export LC_CTYPE=en_US
 
