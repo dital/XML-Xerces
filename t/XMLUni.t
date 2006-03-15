@@ -8,7 +8,7 @@ END {ok(0) unless $loaded;}
 
 use Carp;
 
-# use blib;
+use blib;
 use XML::Xerces;
 use Test::More tests => 4;
 
@@ -25,10 +25,9 @@ ok($loaded, "module loaded");
 ok($XML::Xerces::XMLUni::fgPCDATAString eq '#PCDATA');
 ok($XML::Xerces::XMLUni::fgPubIDString eq 'PUBLIC');
 
-TODO: {
-  local $TODO = "SWIG string check not checking magic";
-  my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
-  my $writer = $impl->createDOMWriter();
-  eval{$writer->setFeature($XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint,1)};
-  ok(!$@);
-}
+my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
+my $writer = $impl->createDOMWriter();
+eval{$writer->setFeature($XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint,1)};
+ok(!$@,
+   "Xerces method arguments now handle magic stringify")
+  or diag(XML::Xerces::error($@));

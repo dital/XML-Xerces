@@ -114,6 +114,13 @@ if (uc($validate) eq 'ALWAYS') {
   die("Unknown value for -v: $validate\n$USAGE");
 }
 
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Initialize()
+  #   when the module is loaded. Xerces.pm no longer does this.
+  #
+  #
+XML::Xerces::XMLPlatformUtils::Initialize();
+
+
 #
 # Parse and print
 #
@@ -132,9 +139,19 @@ XML::Xerces::error($@) if ($@);
 my $doc = $parser->getDocument();
 my $impl = XML::Xerces::DOMImplementationRegistry::getDOMImplementation('LS');
 my $writer = $impl->createDOMWriter();
-if ($writer->canSetFeature("$XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint",1)) {
-  $writer->setFeature("$XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint",1);
+if ($writer->canSetFeature($XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint,1)) {
+  $writer->setFeature($XML::Xerces::XMLUni::fgDOMWRTFormatPrettyPrint,1);
 }
 my $target = XML::Xerces::StdOutFormatTarget->new();
 $writer->writeNode($target,$doc);
+
+END {
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Terminate()
+  #   when the module is unloaded. Xerces.pm no longer does this for us
+  #
+  #
+  XML::Xerces::XMLPlatformUtils::Terminate();
+}
+
 exit(0);
+

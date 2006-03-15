@@ -8,9 +8,9 @@ END {ok(0) unless $loaded;}
 
 use Carp;
 
-# use blib;
+use blib;
 use XML::Xerces;
-use Test::More tests => 6;
+use Test::More tests => 17;
 use Config;
 
 use lib 't';
@@ -25,52 +25,85 @@ ok($loaded, "module loaded");
 
 # test that we get an SAXNotRecognizedException
 my $parser = XML::Xerces::XMLReaderFactory::createXMLReader();
+isa_ok($parser,"XML::Xerces::SAX2XMLReader");
+
+my $feature = "http://xml.org/sax/features/foospaces";
 eval {
-  $parser->setFeature("http://xml.org/sax/features/foospaces", 0);
+  $parser->setFeature($feature, 0);
 };
 my $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::SAXNotRecognizedException') &&
-   $error->getMessage()
-  );
+my $skip = 0;
+unless (ok($error,"setFeature: $feature")) {
+  $skip = 1;
+}
+
+TODO: {
+  todo_skip "setFeature didn't raise an exception", 2, if $skip;
+
+  isa_ok($error,'XML::Xerces::SAXNotRecognizedException');
+  ok($error->getMessage(),"message");
+}
+
+$skip = 0;
 
 eval {
-  $parser->getFeature('http://xml.org/sax/features/foospaces');
+  $parser->getFeature($feature);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::SAXNotRecognizedException') &&
-   $error->getMessage()
-  );
+unless (ok($error,"getFeature: $feature")){
+  $skip = 1;
+}
+
+TODO: {
+  todo_skip "setFeature didn't raise an exception", 2, if $skip;
+
+  isa_ok($error,'XML::Xerces::SAXNotRecognizedException');
+  ok($error->getMessage(),"message");
+}
+
+$skip = 0;
 
 eval {
-  $parser->getProperty('http://xml.org/sax/features/foospaces');
+  $parser->getProperty($feature);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::SAXNotRecognizedException') &&
-   $error->getMessage()
-  );
+unless (ok($error,"getProperty: $feature")) {
+  $skip = 1;
+}
+
+TODO: {
+  todo_skip "setFeature didn't raise an exception", 2, if $skip;
+
+  isa_ok($error,'XML::Xerces::SAXNotRecognizedException');
+  ok($error->getMessage(),"message");
+}
+
+$skip = 0;
 
 eval {
-  $parser->setProperty('http://xml.org/sax/features/foospaces', $parser);
+  $parser->setProperty($feature, "some value");
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::SAXNotRecognizedException') &&
-   $error->getMessage()
-  );
+unless (ok($error,"setProperty: $feature")){
+  $skip = 1;
+}
+
+TODO: {
+  todo_skip "setFeature didn't raise an exception", 2, if $skip;
+
+  isa_ok($error,'XML::Xerces::SAXNotRecognizedException');
+  ok($error->getMessage(),"message");
+}
 
 # test that modifying a feature during a parse raises a not supported exception
 package MyHandler;
 use strict;
-use vars qw(@ISA);
+use vars qw(@ISA $parser);
 @ISA = qw(XML::Xerces::PerlContentHandler);
 
 sub start_element {
   my ($self,$name,$attrs) = @_;
   $parser->setProperty('http://xml.org/sax/features/namespaces', $parser);
-  print STDERR "Got it!!";
 }
 sub end_element {
 }
@@ -86,12 +119,13 @@ eval {
   $parser->parse(XML::Xerces::LocalFileInputSource->new($PERSONAL_FILE_NAME));
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::SAXNotSupportedException') &&
-   $error->getMessage()
-  );
+unless (ok($error,"setting a feature during parse")) {
+  $skip = 1;
+}
 
-# print STDERR "MessageNS = $messageNS\n";
-# print STDERR "MessageNR = $messageNR\n";
-# print STDERR "Error = $error\n";
-# print STDERR "Eval = $@\n";
+TODO: {
+  todo_skip "modifying a feature during a parse didn't raise a not supported exception", 2, if $skip;
+
+  isa_ok($error,'XML::Xerces::SAXNotSupportedException');
+  ok($error->getMessage(),"message");
+}

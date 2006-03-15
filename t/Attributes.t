@@ -12,7 +12,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 use blib;
 use XML::Xerces;
-use Test::More tests => 14;
+use Test::More tests => 19;
 use Config;
 
 use lib 't';
@@ -70,7 +70,8 @@ $SAX2->setErrorHandler($ERROR_HANDLER);
 my $is = XML::Xerces::MemBufInputSource->new($document);
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} == 2);
+is($CONTENT_HANDLER->{test}, 2,
+  "getLength");
 $CONTENT_HANDLER->{test} = '';
 
 # we want to avoid a bunch of warnings about redefining
@@ -86,7 +87,8 @@ $^W = 0;
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} eq $url);
+is($CONTENT_HANDLER->{test}, $url,
+   "getURI");
 
 # test getLocalName
 *MyContentHandler::start_element = sub {
@@ -97,7 +99,8 @@ ok($CONTENT_HANDLER->{test} eq $url);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} eq $local);
+is($CONTENT_HANDLER->{test}, $local,
+  "getLocalName");
 
 # test getQName
 *MyContentHandler::start_element = sub {
@@ -108,7 +111,8 @@ ok($CONTENT_HANDLER->{test} eq $local);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} eq "$ns:$local");
+is($CONTENT_HANDLER->{test}, "$ns:$local",
+  "getQName");
 
 # test getIndex
 *MyContentHandler::start_element = sub {
@@ -119,7 +123,8 @@ ok($CONTENT_HANDLER->{test} eq "$ns:$local");
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} == 1);
+is($CONTENT_HANDLER->{test}, 1,
+  "getIndex");
 
 # test getValue
 *MyContentHandler::start_element = sub {
@@ -130,7 +135,8 @@ ok($CONTENT_HANDLER->{test} == 1);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} eq $value);
+is($CONTENT_HANDLER->{test}, $value,
+  "getValue(url,localname)");
 
 # test overloaded getValue
 *MyContentHandler::start_element = sub {
@@ -141,7 +147,8 @@ ok($CONTENT_HANDLER->{test} eq $value);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} eq $value);
+is($CONTENT_HANDLER->{test}, $value,
+  "getValue(int)");
 
 # test overloaded getValue
 *MyContentHandler::start_element = sub {
@@ -152,7 +159,8 @@ ok($CONTENT_HANDLER->{test} eq $value);
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
-ok($CONTENT_HANDLER->{test} eq $value);
+is($CONTENT_HANDLER->{test}, $value,
+  "getValue");
 
 # test to_hash()
 *MyContentHandler::start_element = sub {
@@ -164,14 +172,16 @@ ok($CONTENT_HANDLER->{test} eq $value);
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is);
 my $hash_ref = $CONTENT_HANDLER->{test};
-ok(ref($hash_ref) eq 'HASH'
-      && keys %{$hash_ref} == 2
-      && $hash_ref->{"$ns:$local"}{value} eq $value
-      && $hash_ref->{"$ns:$local"}{URI} eq $url
-      );
+isa_ok($hash_ref, 'HASH');
+is(keys %{$hash_ref}, 2,
+  "found all attrs");
+is($hash_ref->{"$ns:$local"}{value}, $value,
+  "found attr value");
+is($hash_ref->{"$ns:$local"}{URI}, $url,
+  "found attr url");
 
 $document = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!DOCTYPE bar SYSTEM "foo.dtd" [
+<!DOCTYPE bar [
 <!ELEMENT bar (foo)>
 <!ELEMENT foo EMPTY>
 <!ATTLIST foo id ID #REQUIRED>
@@ -192,6 +202,7 @@ sub new {
 
 sub resolve_entity {
   my ($self,$pub,$sys) = @_;
+print STDERR "resolving entity, pub: $pub, sys: $sys\n";
   return XML::Xerces::MemBufInputSource->new('');
 }
 
@@ -208,7 +219,8 @@ $SAX2->setEntityResolver(MyEntityResolver->new());
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
-ok($CONTENT_HANDLER->{test} eq 'ID');
+is($CONTENT_HANDLER->{test}, 'ID',
+  "getType(int)");
 
 # test overloaded getType
 *MyContentHandler::start_element = sub {
@@ -219,7 +231,8 @@ ok($CONTENT_HANDLER->{test} eq 'ID');
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
-ok($CONTENT_HANDLER->{test} eq 'ID');
+is($CONTENT_HANDLER->{test}, 'ID',
+  "getType(uri,local)");
 
 # test getType
 *MyContentHandler::start_element = sub {
@@ -230,7 +243,8 @@ ok($CONTENT_HANDLER->{test} eq 'ID');
 };
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
-ok($CONTENT_HANDLER->{test} eq 'ID');
+is($CONTENT_HANDLER->{test}, 'ID',
+  "getType");
 
 # test type field of to_hash()
 *MyContentHandler::start_element = sub {
@@ -242,8 +256,9 @@ ok($CONTENT_HANDLER->{test} eq 'ID');
 $CONTENT_HANDLER->{test} = '';
 $SAX2->parse($is2);
 $hash_ref = $CONTENT_HANDLER->{test};
-ok(ref($hash_ref) eq 'HASH'
-      && keys %{$hash_ref} == 2
-      && $hash_ref->{id}{type} eq 'ID'
-      );
+isa_ok($hash_ref, 'HASH');
+is(keys %{$hash_ref}, 2,
+  "to_hash() found all attrs");
+is($hash_ref->{id}{type}, 'ID',
+  "to_hash() found correct type");
 

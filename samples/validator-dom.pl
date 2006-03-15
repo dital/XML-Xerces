@@ -41,7 +41,6 @@ my $rc = GetOptions(\%OPTIONS,
 		    'file=s',
 		    'help',
 		    'schema',
-		    'validate',
 		    'full_schema',
 		    'namespace',
 		    );
@@ -51,7 +50,6 @@ usage: $0 [required flags]
     --file=file_name  : the XML file to parse
 
   optional parameters:
-    --validate        : enables DTD validation
     --namespace       : enable namespace checking
     --schema          : parse a W3C XML Schema file (forces --namespace)
     --full_schema     : do full schema checking (forces --namespace and --schema)
@@ -65,7 +63,7 @@ die "Must specify --file\n$USAGE"
   unless exists $OPTIONS{file};
 
 # handle the optional command-line params
-my $validate = 0;
+my $validate = 1;
 my $namespace = 0;
 my $schema = 0;
 my $full_schema = 0;
@@ -78,9 +76,6 @@ if (exists $OPTIONS{namespace}) {
   $namespace = 1;
   $schema = 1;
   $full_schema = 1;
-}
-if (exists $OPTIONS{validate}) {
-  $validate = 1;
 }
 
 # set globals used by the error handler

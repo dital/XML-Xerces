@@ -74,6 +74,7 @@ isa_ok($doc,'XML::Xerces::DOMDocument');
 is(scalar @persons, 6,'getting <person>s');
 
 # test parse with an input source
+# my $sax_is;
 my $dom_is;
 eval{
   my $sax_is = XML::Xerces::LocalFileInputSource->new($PERSONAL_FILE_NAME);
@@ -81,6 +82,7 @@ eval{
 };
 ok((not $@),'Creating InputSource wrapper')
   or diag(XML::Xerces::error($@));
+# isa_ok($sax_is,'XML::Xerces::LocalFileInputSource');
 isa_ok($dom_is,'XML::Xerces::Wrapper4InputSource');
 
 $doc = eval{$DOM->parse($dom_is)}

@@ -59,8 +59,7 @@ my $perl = $Config{startperl};
 $perl =~ s/^\#!//;
 my $output = `$perl -Mblib $SAMPLE_DIR/DOMPrint.pl $file 2>/dev/null`;
 
-ok($document eq $output);
-diag("Found [$output]\n")
-  unless $document eq $output;
+ok($document eq $output)
+  or diag("Expected: [$document]\nFound: [$output]\n");
 
 END {unlink $file;}

@@ -10,6 +10,7 @@ use vars qw($VERSION
 	    $PERSONAL
 	    $PUBLIC_RESOLVER_FILE_NAME
 	    $SYSTEM_RESOLVER_FILE_NAME
+            $PERSONAL_SCHEMA_INVALID_FILE_NAME
 	    $PERSONAL_SCHEMA_FILE_NAME
 	    $SCHEMA_FILE_NAME
 	    $SAMPLE_DIR
@@ -35,6 +36,7 @@ require Exporter;
 		$SYSTEM_RESOLVER_FILE_NAME
 		$SCHEMA_FILE_NAME
 		$PERSONAL_SCHEMA_FILE_NAME
+		$PERSONAL_SCHEMA_INVALID_FILE_NAME
 		$PERSONAL_DTD_NAME
 		$PERSONAL_NO_DOCTYPE_FILE_NAME
 		$PERSONAL_NO_DOCTYPE
@@ -46,6 +48,13 @@ require Exporter;
 BEGIN {
   # turn off annoying warnings
   $SIG{__WARN__} = 'IGNORE';
+}
+
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Initialize()
+  #   when the module is loaded. Xerces.pm no longer does this.
+  #
+  #
+XML::Xerces::XMLPlatformUtils::Initialize();
 
   $DOM = XML::Xerces::XercesDOMParser->new();
 
@@ -63,6 +72,8 @@ BEGIN {
   $PERSONAL_DTD_NAME =~ s/\.xml/\.dtd/;
   $PERSONAL_SCHEMA_FILE_NAME = $PERSONAL_FILE_NAME;
   $PERSONAL_SCHEMA_FILE_NAME =~ s/\.xml/-schema.xml/;
+  $PERSONAL_SCHEMA_INVALID_FILE_NAME = $PERSONAL_SCHEMA_FILE_NAME;
+  $PERSONAL_SCHEMA_INVALID_FILE_NAME =~ s/-schema/-schema-invalid/;
   $SCHEMA_FILE_NAME = $PERSONAL_FILE_NAME;
   $SCHEMA_FILE_NAME =~ s/\.xml/.xsd/;
   $CATALOG = $PERSONAL_FILE_NAME;
@@ -86,6 +97,13 @@ BEGIN {
   $/ = undef;
   $PERSONAL_NO_XMLDECL = <PERSONAL>;
   close PERSONAL;
+
+END {
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Terminate()
+  #   when the module is unloaded. Xerces.pm no longer does this for us
+  #
+  #
+  XML::Xerces::XMLPlatformUtils::Terminate();
 }
 
 sub error {
@@ -145,5 +163,7 @@ sub resolve_entity {
       if ref $@;
     print STDERR "$msg $@\n";
   }
+
+  $is->DISOWN();
   return $is;
 }

@@ -9,7 +9,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 10;
+use Test::More tests => 11;
 use Cwd;
 
 use lib 't';
@@ -148,3 +148,38 @@ if ($@) {
   die $@;
 }
 ok(1);
+
+package MyEntityResolver;
+use strict;
+use vars qw(@ISA);
+@ISA = qw(XML::Xerces::PerlEntityResolver);
+
+sub new {
+  return bless {}, shift;
+}
+
+sub resolve_entity {
+  my ($self,$pub,$sys) = @_;
+  return undef;
+}
+
+package main;
+my $document2 = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE bar SYSTEM "foo.dtd" [
+<!ELEMENT bar (foo)>
+<!ELEMENT foo EMPTY>
+<!ATTLIST foo id ID #REQUIRED>
+<!ATTLIST foo role CDATA #REQUIRED>
+]>
+<bar>
+  <foo id='baz' role="manager"/>
+</bar>];
+
+my $is2 = eval{XML::Xerces::MemBufInputSource->new($document2)};
+XML::Xerces::error($@) if $@;
+$DOM->setEntityResolver(MyEntityResolver->new());
+eval {$DOM->parse($is2)};
+my $error = $@;
+ok($error,
+  "entity resolver which returns NULL for DTD resolution raises exception");
+

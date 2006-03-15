@@ -10,9 +10,11 @@ use Carp;
 
 # use blib;
 use XML::Xerces;
-use Test::More tests => 1;
+use Test::More tests => 4;
 use Config;
 
+use lib 't';
+use TestUtils qw($PERSONAL_FILE_NAME);
 use vars qw($loaded $error);
 use strict;
 
@@ -21,14 +23,15 @@ ok($loaded, "module loaded");
 
 ######################### End of black magic.
 
-# test that we get an exception object
-# 2003-06-10 JES: it seems that this has changed for 2.3 and 
-# now a fatal error is thrown at parse time instead
-#
-# eval {
-#   XML::Xerces::LocalFileInputSource->new('../I/AM/NOT/A/FILE');
-# };
-# my $error = $@;
-# ok($error &&
-#    UNIVERSAL::isa($error,'XML::Xerces::XMLException') &&
-#    $error->getCode() == $XML::Xerces::XMLExcepts::File_CouldNotGetBasePathName);
+my $uri = eval{XML::Xerces::XMLUri->new(undef,"")};
+my $error = $@;
+ok($error,
+  "exception when XMLUri constructor called with NULL baseUri, and empty uriSpec");
+isa_ok($error,'XML::Xerces::XMLException');
+
+my $expected = $XML::Xerces::XMLExcepts::XMLNUM_URI_Component_Empty;
+my $code = $error->getCode();
+is($code, $expected,
+   "got correct error code")
+  or diag("Expected: $XML::Xerces::XMLExcepts::CODES[$expected], Found: $XML::Xerces::XMLExcepts::CODES[$code]");
+

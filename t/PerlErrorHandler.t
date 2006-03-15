@@ -110,10 +110,11 @@ package main;
   my $expected_error = <<EOE;
 FATAL ERROR:
 LINE:    22
-COLUMN:  11
+COLUMN:  5
 MESSAGE: Expected end of tag 'foo'
 EOE
-  ok($expected_error eq $error);
+  ok($expected_error eq $error)
+    or diag("Expected error: [$expected_error]\nFound error: [$error]\n");
 
 }
 

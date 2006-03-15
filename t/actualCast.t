@@ -34,6 +34,8 @@ isa_ok($name,'XML::Xerces::DOMNode');
 # test that it really is a subclass
 isa_ok($name,'XML::Xerces::DOMElement');
 
+SKIP: {
+  skip "Grammars not yet re-implemented", 4 if 0;
 # now test the grammars
 my $grammar = $DOM->getRootGrammar();
 isa_ok($grammar,'XML::Xerces::Grammar');
@@ -47,6 +49,7 @@ $DOM->parse($PERSONAL_SCHEMA_FILE_NAME);
 $grammar = $DOM->getRootGrammar();
 isa_ok($grammar,'XML::Xerces::Grammar');
 isa_ok($grammar,'XML::Xerces::SchemaGrammar');
+}
 
 # now test the CallbackHandler's
 SKIP: {

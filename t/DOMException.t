@@ -12,7 +12,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 7;
+use Test::More tests => 19;
 use Config;
 
 use lib 't';
@@ -29,6 +29,12 @@ ok($loaded, "module loaded");
 # of the test code):
 
 
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Initialize()
+  #   when the module is loaded. Xerces.pm no longer does this.
+  #
+  #
+XML::Xerces::XMLPlatformUtils::Initialize();
+
 my $impl = XML::Xerces::DOMImplementation::getImplementation();
 my $dt = $impl->createDocumentType('Foo', 'foo', 'Foo.dtd');
 my $doc = $impl->createDocument('Foo', 'foo',$dt);
@@ -36,10 +42,12 @@ eval {
   $impl->createDocument('Bar', 'bar',$dt);
 };
 my $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::DOMException') &&
-   $error->{code} == $XML::Xerces::DOMException::WRONG_DOCUMENT_ERR
-  );
+ok($error,
+  "creating doc with DocumentType from another doc raises exception");
+isa_ok($error,'XML::Xerces::DOMException');
+
+is($error->{code}, $XML::Xerces::DOMException::WRONG_DOCUMENT_ERR,
+   "got correct error code");
 
 # Create a couple of identical test documents
 my $document = q[<?xml version="1.0" encoding="UTF-8"?>
@@ -58,68 +66,84 @@ my $document = q[<?xml version="1.0" encoding="UTF-8"?>
 	</person>
 </contributors>];
 
-my $DOM1 = new XML::Xerces::XercesDOMParser;
-my $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
-$DOM1->setErrorHandler($ERROR_HANDLER);
-my $is = eval{XML::Xerces::MemBufInputSource->new($document)};
-XML::Xerces::error($@) if $@;
-eval{$DOM1->parse($is)};
-XML::Xerces::error($@) if $@;
+my ($DOM1, $ERROR_HANDLER, $DOM2);
+my ($doc1, $doc2);
+my ($root1, @persons1, $name1, $root2, @persons2, $name2);
 
-my $DOM2 = new XML::Xerces::XercesDOMParser;
-$DOM2->setErrorHandler($ERROR_HANDLER);
-eval {$DOM2->parse($is)};
-XML::Xerces::error($@) if $@;
+sub refresh {
+  $DOM1 = new XML::Xerces::XercesDOMParser;
+  $ERROR_HANDLER = XML::Xerces::PerlErrorHandler->new();
+  $DOM1->setErrorHandler($ERROR_HANDLER);
+  my $is = eval{XML::Xerces::MemBufInputSource->new($document)};
+  XML::Xerces::error($@) if $@;
+  eval{$DOM1->parse($is)};
+  XML::Xerces::error($@) if $@;
 
-my $doc1 = $DOM1->getDocument();
-my $doc2 = $DOM2->getDocument();
+  $DOM2 = new XML::Xerces::XercesDOMParser;
+  $DOM2->setErrorHandler($ERROR_HANDLER);
+  eval {$DOM2->parse($is)};
+  XML::Xerces::error($@) if $@;
 
-my $root1 = $doc1->getDocumentElement();
-my @persons1 = $root1->getChildNodes();
-my $name1 = ($persons1[1]->getChildNodes())[1];
-my $root2 = $doc2->getDocumentElement();
-my @persons2 = $root2->getChildNodes();
-my $name2 = ($persons2[1]->getChildNodes())[1];
+  $doc1 = $DOM1->getDocument();
+  $doc2 = $DOM2->getDocument();
+
+  $root1 = $doc1->getDocumentElement();
+  @persons1 = $root1->getChildNodes();
+  $name1 = ($persons1[1]->getChildNodes())[1];
+  $root2 = $doc2->getDocumentElement();
+  @persons2 = $root2->getChildNodes();
+  $name2 = ($persons2[1]->getChildNodes())[1];
+}
+
+refresh();
 
 # Trying to append to a DOMDocument node gives a hierarchy error
 eval {
   $doc1->appendChild($root2);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::DOMException') &&
-   $error->{code} == $XML::Xerces::DOMException::HIERARCHY_REQUEST_ERR
-  );
+ok($error,
+   "Trying to append to a DOMDocument node gives a hierarchy error");
+isa_ok($error,'XML::Xerces::DOMException');
+
+is($error->{code}, $XML::Xerces::DOMException::HIERARCHY_REQUEST_ERR,
+   "got correct error code");
+
+refresh();
 
 # Trying to append to a different DOMDocument gives a wrong doc error
 eval {
   $root1->appendChild($root2);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::DOMException') &&
-   $error->{code} == $XML::Xerces::DOMException::WRONG_DOCUMENT_ERR
-  );
+ok($error,
+   "Trying to append to a different DOMDocument gives a wrong doc error");
+isa_ok($error,'XML::Xerces::DOMException');
+
+is($error->{code}, $XML::Xerces::DOMException::WRONG_DOCUMENT_ERR,
+   "got correct error code");
 
 # Trying to insert to a different DOMDocument gives a wrong doc error
 eval {
   $persons1[1]->insertBefore($persons2[1],$persons1[1]);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::DOMException') &&
-   $error->{code} == $XML::Xerces::DOMException::WRONG_DOCUMENT_ERR
-  );
+ok($error,
+   "Trying to insert to a different DOMDocument gives a wrong doc error");
+isa_ok($error,'XML::Xerces::DOMException');
+is($error->{code}, $XML::Xerces::DOMException::WRONG_DOCUMENT_ERR,
+  "got correct error code");
 
 # Trying to insert to a DOMDocument node gives a wrong doc error
 eval {
   $doc1->insertBefore($persons2[1],$root1);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::DOMException') &&
-   $error->{code} == $XML::Xerces::DOMException::HIERARCHY_REQUEST_ERR
-  );
+ok($error,
+   "Trying to insert to a DOMDocument node gives a hierarchy error");
+isa_ok($error,'XML::Xerces::DOMException');
+is($error->{code}, $XML::Xerces::DOMException::HIERARCHY_REQUEST_ERR,
+  "got correct error code");
 
 # Trying to insert before a node that is not a subnode of the calling node
 # gives a not found error
@@ -127,11 +151,17 @@ eval {
   $persons1[1]->insertBefore($name1,$persons1[3]);
 };
 $error = $@;
-ok($error &&
-   UNIVERSAL::isa($error,'XML::Xerces::DOMException') &&
-   $error->{code} == $XML::Xerces::DOMException::NOT_FOUND_ERR
-  );
+ok($error,
+   "Trying to insert before a node that is not a subnode of the calling node gives a not found error");
+isa_ok($error,'XML::Xerces::DOMException');
 
-# print STDERR "Code = $code\n";
-# print STDERR "Eval = $@\n";
-# print STDERR "Error = $error\n";
+is($error->{code}, $XML::Xerces::DOMException::NOT_FOUND_ERR,
+   "got correct error code");
+
+END {
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Terminate()
+  #   when the module is unloaded. Xerces.pm no longer does this for us
+  #
+  #
+  XML::Xerces::XMLPlatformUtils::Terminate();
+}

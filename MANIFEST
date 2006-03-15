@@ -50,10 +50,12 @@ samples/personal-no-doctype.xml
 samples/personal.xsd
 samples/public.xml
 samples/system.xml
+samples/personal-invalid.xml
+samples/personal-not-well-formed.xml
+samples/personal-schema-invalid.xml
 
 # sample programs
 samples/validator.pl
-samples/XMLSimple.pm
 samples/DOM2hash.pl
 samples/EnumVal.pl
 samples/SEnumVal.pl
@@ -63,7 +65,15 @@ samples/DOMPrint.pl
 samples/SAXCount.pl
 samples/SAX2Count.pl
 
+# sample modules
+samples/XMLSimple.pm
+samples/Writer.pm
+
 # tests
+
+# core tests
+t/00basic.t
+t/00core.t
 
 # sample applications
 t/DOMCreate.t
@@ -87,6 +97,7 @@ t/DOMTreeWalker.t
 t/DOMAttr.t
 t/DOMElement.t
 t/DOMWriter.t
+t/DOMImplementation.t
 
 t/AttributeList.t
 t/Attributes.t
@@ -110,6 +121,10 @@ t/XMLUni.t
 # SWIG casting test
 t/actualCast.t
 
+# test Unicode
+t/01utf8.t           testing callback methods which broke UTF8
+t/UTF8.t             original tests
+
 t/letter.xml
 t/TestUtils.pm
 
@@ -124,7 +139,39 @@ SWIG.pm
 Handler/PerlCallbackHandler.swig.hpp
 postModule.pl
 postSource.pl
-typemaps.i
+
+
+# scripting language independent SWIG files
+interface/DOM.i
+interface/defines.i
+interface/typemaps-general.i
+interface/typemaps.i
+interface/callback.i
+interface/grammars.i
+interface/ignore.i
+interface/input-source.i
+interface/parsers.i
+interface/SAX.i
+interface/SAX2.i
+interface/util.i
+
+# scripting language specific SWIG files
+interface/Perl/shadow.i
+interface/Perl/typemaps.i
+interface/Perl/transcode.i
+interface/Perl/defines.i
+interface/Perl/callback.i
+interface/Perl/typemaps-xmlch.i
+interface/Perl/errors.i
+
+# scripts for testing XML::Xerces
+scripts/memtest-light.pl
+scripts/memtest.pl
+scripts/xercesc-memtest.pl
+scripts/xmluni-output.pl
+
+# Document which parts of the Xerces-C API have been included
+xerces-headers.txt
 
 # this is for internal use by developers making a release
 # ANNOUNCE
@@ -151,3 +198,36 @@ typemaps.i
 # docs/samples.xml
 # docs/xerces-perl_book.xml
 
+# the new site information
+docs/forrest-docs/forrest.properties
+docs/forrest-docs/src/documentation/classes/CatalogManager.properties
+docs/forrest-docs/src/documentation/content/semantic.cache
+docs/forrest-docs/src/documentation/content/xdocs/download.xml
+docs/forrest-docs/src/documentation/content/xdocs/images/group-logo.gif
+docs/forrest-docs/src/documentation/content/xdocs/images/group.svg
+docs/forrest-docs/src/documentation/content/xdocs/images/icon.png
+docs/forrest-docs/src/documentation/content/xdocs/images/project-logo.gif
+docs/forrest-docs/src/documentation/content/xdocs/images/project.svg
+docs/forrest-docs/src/documentation/content/xdocs/images/usemap.gif
+docs/forrest-docs/src/documentation/content/xdocs/index.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/dom2hash.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/domcount.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/domcreate.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/domprint.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/enumval.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/index.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/sax2count.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/saxcount.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/senumval.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/validator-dom.xml
+docs/forrest-docs/src/documentation/content/xdocs/samples/validator.xml
+docs/forrest-docs/src/documentation/content/xdocs/site.xml
+docs/forrest-docs/src/documentation/content/xdocs/tabs.xml
+docs/forrest-docs/src/documentation/resources/schema/catalog.xcat
+docs/forrest-docs/src/documentation/resources/schema/project-entities.ent
+docs/forrest-docs/src/documentation/sitemap.xmap
+docs/forrest-docs/src/documentation/skinconf.xml
+docs/forrest-docs/src/documentation/conf/cli.xconf
+docs/forrest-docs/src/documentation/content/mirrors.cgi
+docs/forrest-docs/src/documentation/content/xdocs/mirrors.html
+docs/forrest-docs/src/documentation/mirrors.cgi

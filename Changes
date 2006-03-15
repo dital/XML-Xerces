@@ -1,4 +1,24 @@
-Revision history for Perl extension Genex.
+Revision history for Perl extension XML::Xerces.
+
+2.7.0-0 Sun Jan  1 08:44:27 IST 2006
+	- first public 2.7 release
+	- working with SWIG-1.3.28 pre-release
+	- removed all uses of XMLString::transcode() from the Perl
+	  callback handler classes in Handler/
+
+2.6.0-2
+	- first public 2.6 release
+	- all known memory leaks fixed
+	- all known segfaults fixed (especially with regards to
+          exception handling) - perhaps this will fix AIX?
+
+2.6.0-1
+	- second beta 2.6 release
+	
+
+2.6.0-0
+	- first attempt at 2.6 release
+	- most memory leaks resovlved
 
 2.3.0-5
 	- fifth bugfix release of 2.3.0 series.

@@ -8,8 +8,8 @@ END {ok(0) unless $loaded;}
 
 use Carp;
 # use blib;
-use XML::Xerces;
 use Test::More tests => 8;
+use XML::Xerces;
 
 use lib 't';
 use TestUtils qw($PERSONAL_FILE_NAME $PERSONAL_NO_DOCTYPE $PERSONAL $DOM);
@@ -18,6 +18,12 @@ use strict;
 
 $loaded = 1;
 ok($loaded, "module loaded");
+
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Initialize()
+  #   when the module is loaded. Xerces.pm no longer does this.
+  #
+  #
+XML::Xerces::XMLPlatformUtils::Initialize();
 
 ######################### End of black magic.
 
@@ -81,3 +87,11 @@ XML::Xerces::error($@) if $@;
 # now check that we do *not* get whitespace nodes
 my @nodes = $DOM->getDocument->getDocumentElement->getChildNodes();
 ok(scalar @nodes == 6);
+
+END {
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Terminate()
+  #   when the module is unloaded. Xerces.pm no longer does this for us
+  #
+  #
+  XML::Xerces::XMLPlatformUtils::Terminate();
+}

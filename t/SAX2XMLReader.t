@@ -9,11 +9,11 @@ END {ok(0) unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces qw(error);
-use Test::More tests => 16;
+use Test::More tests => 26;
 use Config;
 
 use lib 't';
-use TestUtils qw($PERSONAL_FILE_NAME);
+use TestUtils qw($PERSONAL_FILE_NAME $SCHEMA_FILE_NAME $PERSONAL_SCHEMA_INVALID_FILE_NAME);
 use vars qw($loaded $error);
 use strict;
 
@@ -69,25 +69,25 @@ my $CONTENT_HANDLER = MyContentHandler->new();
 $SAX->setContentHandler($CONTENT_HANDLER);
 $SAX->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
 eval {
-    $SAX->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 1);
-    $SAX->setFeature("$XML::Xerces::XMLUni::fgXercesDynamic", 0);
+    $SAX->setFeature($XML::Xerces::XMLUni::fgSAX2CoreValidation, 1);
+    $SAX->setFeature($XML::Xerces::XMLUni::fgXercesDynamic, 0);
 };
 ok((not $@),'setting validate=>yes, dynamic=>no')
   or diag("Here's the error: $@");
 
-eval{$SAX->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'))};
+my $is = XML::Xerces::MemBufInputSource->new($document, 'foo');
+eval{$SAX->parse($is)};
 ok($@,'no dtd');
 
 $SAX = XML::Xerces::XMLReaderFactory::createXMLReader();
 $SAX->setContentHandler($CONTENT_HANDLER);
 $SAX->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
 eval {
-    $SAX->setFeature("$XML::Xerces::XMLUni::fgSAX2CoreValidation", 1);
-    $SAX->setFeature("$XML::Xerces::XMLUni::fgXercesDynamic", 1);
+    $SAX->setFeature($XML::Xerces::XMLUni::fgSAX2CoreValidation, 1);
+    $SAX->setFeature($XML::Xerces::XMLUni::fgXercesDynamic, 1);
 };
 ok((not $@),'setting dynamic=>yes')
   or diag("Here's the error: $@");
-
 
 # reset the counts
 $CONTENT_HANDLER->reset_document();
@@ -95,9 +95,9 @@ $CONTENT_HANDLER->reset_document();
 eval{$SAX->parse(XML::Xerces::MemBufInputSource->new($document, 'foo'))};
 ok((not $@),'membuf parse');
 
-ok($CONTENT_HANDLER->{elements} == 10,'elements');
-ok($CONTENT_HANDLER->{chars} == 141,'chars');
-ok($CONTENT_HANDLER->{ws} == 0,'ws');
+is($CONTENT_HANDLER->{elements}, 10,'elements');
+is($CONTENT_HANDLER->{chars}, 141,'chars');
+is($CONTENT_HANDLER->{ws}, 0,'ws');
 
 # test the overloaded parse version
 $SAX->parse($PERSONAL_FILE_NAME);
@@ -164,6 +164,15 @@ use strict;
 use vars qw(@ISA);
 @ISA = qw(XML::Xerces::PerlErrorHandler);
 sub warning {
+  my $LINE = $_[1]->getLineNumber;
+  my $COLUMN = $_[1]->getColumnNumber;
+  my $MESSAGE = $_[1]->getMessage;
+  $::error = <<"EOE";
+WARNING:
+LINE:    $LINE
+COLUMN:  $COLUMN
+MESSAGE: $MESSAGE
+EOE
 }
 
 sub error {
@@ -216,3 +225,90 @@ ok((not $@),'successful parse after fatal error');
 
 eval {$SAX->parse(XML::Xerces::MemBufInputSource->new($document))};
 ok($@,'fatal error in parse');
+
+#
+# Test setProperty()
+#
+$SAX = XML::Xerces::XMLReaderFactory::createXMLReader();
+$SAX->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
+
+# setProperty(): fgXercesSchemaExternalSchemaLocation
+eval {
+    $SAX->setProperty($XML::Xerces::XMLUni::fgXercesSchemaExternalSchemaLocation, "nowhere");
+};
+ok((not $@),'setProperty(): fgXercesSchemaExternalSchemaLocation')
+  or diag("Here's the error: $@");
+
+# setProperty(): fgXercesSchemaExternalNoNameSpaceSchemaLocation
+eval {
+    $SAX->setProperty($XML::Xerces::XMLUni::fgXercesSchemaExternalNoNameSpaceSchemaLocation, "nowhere");
+};
+ok((not $@),'setProperty(): fgXercesSchemaExternalNoNameSpaceSchemaLocation')
+  or diag("Here's the error: $@");
+
+# setProperty(): fgXercesScannerName
+eval {
+    $SAX->setProperty($XML::Xerces::XMLUni::fgXercesScannerName, "BADNAME");
+};
+ok((not $@),'setProperty(): fgXercesScannerName')
+  or diag("Here's the error: $@");
+
+# setProperty(): fgXercesSecurityManager
+eval {
+    $SAX->setProperty($XML::Xerces::XMLUni::fgXercesSecurityManager, "BADNAME");
+};
+$error = $@;
+ok($error,'setProperty(): fgXercesSecurityManager - throws exception');
+isa_ok($@,'XML::Xerces::SAXNotSupportedException');
+
+# setProperty(): bogus
+eval {
+    $SAX->setProperty("bogus", "BADNAME");
+};
+$error = $@;
+ok($@,'setProperty(): bogus - throws exception');
+isa_ok($@,'XML::Xerces::SAXNotRecognizedException');
+
+$document = q[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<contributors  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <person Role="manager">
+    <name>Mike Pogue</name>
+    <email>mpogue@us.ibm.com</email>
+  </person>
+  <person Role="developer">
+    <name>Tom Watson</name>
+    <email>rtwatson@us.ibm.com</email>
+  </person>
+  <person Role="tech writer">
+    <name>Susan Hardenbrook</name>
+    <email>susanhar@us.ibm.com</email>
+  </person>
+</contributors>];
+
+$SAX = XML::Xerces::XMLReaderFactory::createXMLReader();
+
+$CONTENT_HANDLER = MyContentHandler->new();
+$SAX->setContentHandler($CONTENT_HANDLER);
+
+$SAX->setFeature($XML::Xerces::XMLUni::fgSAX2CoreNameSpaces, 1);
+$SAX->setFeature($XML::Xerces::XMLUni::fgXercesSchema, 1);
+$SAX->setFeature($XML::Xerces::XMLUni::fgSAX2CoreValidation, 1);
+$SAX->setFeature($XML::Xerces::XMLUni::fgXercesDynamic, 1);
+
+$SAX->setProperty($XML::Xerces::XMLUni::fgXercesSchemaExternalNoNameSpaceSchemaLocation, 'this_file_does_not_exist');
+
+$SAX->setErrorHandler(MyErrorHandler->new());
+$::error = '';
+
+$is = eval{XML::Xerces::MemBufInputSource->new($document)};
+eval {$SAX->parse($is)};
+ok($::error, "parse with fgXercesSchemaExternalNoNameSpaceSchemaLocation set to invalid file throws warning");
+
+$SAX->setProperty($XML::Xerces::XMLUni::fgXercesSchemaExternalNoNameSpaceSchemaLocation, $SCHEMA_FILE_NAME);
+$SAX->setErrorHandler(XML::Xerces::PerlErrorHandler->new());
+
+# $is = eval{XML::Xerces::LocalFileInputSource->new($PERSONAL_SCHEMA_INVALID_FILE_NAME)};
+eval {$SAX->parse($is)};
+ok($@, "parse invalid doc with fgXercesSchemaExternalNoNameSpaceSchemaLocation set");
+like($@, qr/Unknown element 'contributors'/, 'invalid document error');
+

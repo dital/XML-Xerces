@@ -9,7 +9,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 4;
+use Test::More tests => 6;
 
 use lib 't';
 use TestUtils qw($DOM $PERSONAL_NO_DOCTYPE);
@@ -23,16 +23,25 @@ ok($loaded, "module loaded");
 
 my $is = eval{XML::Xerces::MemBufInputSource->new($PERSONAL_NO_DOCTYPE,'foo')};
 XML::Xerces::error($@) if $@;
-ok(UNIVERSAL::isa($is,'XML::Xerces::InputSource')
-   && $is->isa('XML::Xerces::MemBufInputSource')
-  );
+isa_ok($is, 'XML::Xerces::InputSource');
+isa_ok($is, 'XML::Xerces::MemBufInputSource');
 
 eval {$DOM->parse($is)};
 XML::Xerces::error($@) if $@;
 my $serialize = $DOM->getDocument->serialize;
-ok($serialize eq $PERSONAL_NO_DOCTYPE);
+is($serialize, $PERSONAL_NO_DOCTYPE,
+   "doctype");
 
 # now test that the fake system ID is optional
 $is = eval{XML::Xerces::MemBufInputSource->new($PERSONAL_NO_DOCTYPE)};
 XML::Xerces::error($@) if $@;
-ok($is->getSystemId() eq 'FAKE_SYSTEM_ID');
+is($is->getSystemId(), 'FAKE_SYSTEM_ID',
+   "system id");
+
+# test that a blank document does not segfault
+$is = eval{XML::Xerces::MemBufInputSource->new('')};
+XML::Xerces::error($@) if $@;
+eval {$DOM->parse($is)};
+ok($@,
+  "blank document does not segfault")
+  or diag($@);

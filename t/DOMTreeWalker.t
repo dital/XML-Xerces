@@ -12,7 +12,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 # use blib;
 use XML::Xerces;
-use Test::More tests => 5;
+use Test::More tests => 7;
 use Config;
 
 use lib 't';
@@ -63,18 +63,20 @@ eval{$DOM->parse(XML::Xerces::MemBufInputSource->new($document))};
 XML::Xerces::error($@) if $@;
 
 my $doc = $DOM->getDocument();
+isa_ok($doc,'XML::Xerces::DOMDocumentTraversal');
 my $root = $doc->getDocumentElement();
 my $filter = MyNodeFilter->new();
+isa_ok($filter,'XML::Xerces::PerlNodeFilter');
 my $what = $XML::Xerces::DOMNodeFilter::SHOW_ELEMENT;
 my $walker = eval{$doc->createTreeWalker($root,$what,$filter,1)};
 XML::Xerces::error($@) if $@;
 
-ok(defined $walker &&
-   UNIVERSAL::isa($walker,'XML::Xerces::DOMTreeWalker'));
+isa_ok($walker,'XML::Xerces::DOMTreeWalker');
 
 # test parentNode
 $walker->nextNode();
-ok($walker->parentNode() == $root);
+ok($walker->parentNode() == $root,
+  "first node is root");
 
 my $success = 1;
 my $count = 0;
@@ -83,7 +85,9 @@ while (my $node = $walker->nextNode()) {
   $success = 0 unless $node->isa('XML::Xerces::DOMElement');
 }
 # test that we only got elements
-ok($success);
+ok($success,
+  "TreeWalker returns only DOMElements");
 
 #test that we got all the elements
-ok($count == 9);
+ok($count == 9,
+  "TreeWalker traverses all elements in tree");

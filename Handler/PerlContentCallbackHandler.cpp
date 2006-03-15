@@ -1,3 +1,19 @@
+/*
+ * Copyright 2002,2004 The Apache Software Foundation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <stdlib.h>
 #include "PerlContentCallbackHandler.hpp"
 
@@ -45,21 +61,15 @@ PerlContentCallbackHandler::startElement(const   XMLCh* const    uri,
     XPUSHs(callbackObj);
 
         // the next argument is the uri
-    char *cptr1 = XMLString::transcode(uri);
-    SV *string1 = sv_newmortal();
-    sv_setpv(string1, (char *)cptr1);
+    SV *string1 = XMLString2Perl(uri);
     XPUSHs(string1);
 
         // the next argument is the localname
-    char *cptr2 = XMLString::transcode(localname);
-    SV *string2 = sv_newmortal();
-    sv_setpv(string2, (char *)cptr2);
+    SV *string2 = XMLString2Perl(localname);
     XPUSHs(string2);
 
         // the next argument is the qname
-    char *cptr3 = XMLString::transcode(qname);
-    SV *string3 = sv_newmortal();
-    sv_setpv(string3, (char *)cptr3);
+    SV *string3 = XMLString2Perl(qname);
     XPUSHs(string3);
 
         // next is the attributes
@@ -70,11 +80,6 @@ PerlContentCallbackHandler::startElement(const   XMLCh* const    uri,
     PUTBACK;
 
     perl_call_method("start_element", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr1;
-    delete [] cptr2;
-    delete [] cptr3;
 
     FREETMPS;
     LEAVE;
@@ -97,31 +102,20 @@ PerlContentCallbackHandler::endElement(const   XMLCh* const    uri,
     XPUSHs(callbackObj);
 
         // the next argument is the uri
-    char *cptr1 = XMLString::transcode(uri);
-    SV *string1 = sv_newmortal();
-    sv_setpv(string1, (char *)cptr1);
+    SV *string1 = XMLString2Perl(uri);
     XPUSHs(string1);
 
         // the next argument is the localname
-    char *cptr2 = XMLString::transcode(localname);
-    SV *string2 = sv_newmortal();
-    sv_setpv(string2, (char *)cptr2);
+    SV *string2 = XMLString2Perl(localname);
     XPUSHs(string2);
 
         // the next argument is the qname
-    char *cptr3 = XMLString::transcode(qname);
-    SV *string3 = sv_newmortal();
-    sv_setpv(string3, (char *)cptr3);
+    SV *string3 = XMLString2Perl(qname);
     XPUSHs(string3);
 
     PUTBACK;
 
     perl_call_method("end_element", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr1;
-    delete [] cptr2;
-    delete [] cptr3;
 
     FREETMPS;
     LEAVE;
@@ -142,10 +136,8 @@ PerlContentCallbackHandler::characters(const XMLCh* const chars,
 	// first put the callback object on the stack
     XPUSHs(callbackObj);
 
-        // the next argument is the element name
-    char *cptr = XMLString::transcode(chars);
-    SV *string = sv_newmortal();
-    sv_setpv(string, (char *)cptr);
+        // the next argument is the char data
+    SV *string = XMLString2Perl(chars);
     XPUSHs(string);
 
         // next is the length
@@ -154,9 +146,6 @@ PerlContentCallbackHandler::characters(const XMLCh* const chars,
     PUTBACK;
 
     perl_call_method("characters", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr;
 
     FREETMPS;
     LEAVE;
@@ -176,10 +165,8 @@ PerlContentCallbackHandler::ignorableWhitespace(const XMLCh* const chars,
 	// first put the callback object on the stack
     XPUSHs(callbackObj);
 
-        // the next argument is the element name
-    char *cptr = XMLString::transcode(chars);
-    SV *string = sv_newmortal();
-    sv_setpv(string, (char *)cptr);
+        // the next argument is the char data
+    SV *string = XMLString2Perl(chars);
     XPUSHs(string);
 
         // next is the length
@@ -277,24 +264,16 @@ PerlContentCallbackHandler::processingInstruction(const XMLCh* const target,
     XPUSHs(callbackObj);
 
         // the next argument is the target
-    char *cptr1 = XMLString::transcode(target);
-    SV *string1 = sv_newmortal();
-    sv_setpv(string1, (char *)cptr1);
+    SV *string1 = XMLString2Perl(target);
     XPUSHs(string1);
 
         // the next argument is the data
-    char *cptr2 = XMLString::transcode(data);
-    SV *string2 = sv_newmortal();
-    sv_setpv(string2, (char *)cptr2);
+    SV *string2 = XMLString2Perl(data);
     XPUSHs(string2);
 
     PUTBACK;
 
     perl_call_method("processing_instruction", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr1;
-    delete [] cptr2;
 
     FREETMPS;
     LEAVE;
@@ -344,24 +323,16 @@ PerlContentCallbackHandler::startPrefixMapping (const XMLCh* const prefix,
     XPUSHs(callbackObj);
 
         // the next argument is the prefix
-    char *cptr1 = XMLString::transcode(prefix);
-    SV *string1 = sv_newmortal();
-    sv_setpv(string1, (char *)cptr1);
+    SV *string1 = XMLString2Perl(prefix);
     XPUSHs(string1);
 
         // the next argument is the uri
-    char *cptr2 = XMLString::transcode(uri);
-    SV *string2 = sv_newmortal();
-    sv_setpv(string2, (char *)cptr2);
+    SV *string2 = XMLString2Perl(uri);
     XPUSHs(string2);
 
     PUTBACK;
 
     perl_call_method("start_prefix_mapping", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr1;
-    delete [] cptr2;
 
     FREETMPS;
     LEAVE;
@@ -382,17 +353,12 @@ PerlContentCallbackHandler::endPrefixMapping (const XMLCh* const prefix)
     XPUSHs(callbackObj);
 
         // the next argument is the prefix
-    char *cptr1 = XMLString::transcode(prefix);
-    SV *string1 = sv_newmortal();
-    sv_setpv(string1, (char *)cptr1);
+    SV *string1 = XMLString2Perl(prefix);
     XPUSHs(string1);
 
     PUTBACK;
 
     perl_call_method("end_prefix_mapping", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr1;
 
     FREETMPS;
     LEAVE;
@@ -413,17 +379,12 @@ PerlContentCallbackHandler::skippedEntity (const XMLCh* const name)
     XPUSHs(callbackObj);
 
         // the next argument is the name
-    char *cptr1 = XMLString::transcode(name);
-    SV *string1 = sv_newmortal();
-    sv_setpv(string1, (char *)cptr1);
+    SV *string1 = XMLString2Perl(name);
     XPUSHs(string1);
 
     PUTBACK;
 
     perl_call_method("skipped_entity", G_VOID);
-
-	// transcode mallocs this and leaves it up to us to free the memory
-    delete [] cptr1;
 
     FREETMPS;
     LEAVE;

@@ -10,7 +10,7 @@ use Carp;
 
 use blib;
 use XML::Xerces;
-use Test::More tests => 5;
+use Test::More tests => 7;
 use Config;
 
 use vars qw($loaded);
@@ -55,15 +55,17 @@ $DOM->setErrorHandler($ERROR_HANDLER);
 $DOM->parse(XML::Xerces::MemBufInputSource->new($document));
 
 my $doc = $DOM->getDocument();
+isa_ok($doc,'XML::Xerces::DOMDocumentTraversal');
 my $root = $doc->getDocumentElement();
 my $filter = MyNodeFilter->new();
+isa_ok($filter,'XML::Xerces::PerlNodeFilter');
 my $what = $XML::Xerces::DOMNodeFilter::SHOW_ELEMENT;
 my $iterator = $doc->createNodeIterator($root,$what,$filter,1);
-ok(defined $iterator &&
-   UNIVERSAL::isa($iterator,'XML::Xerces::DOMNodeIterator'));
+isa_ok($iterator,'XML::Xerces::DOMNodeIterator');
 
 # test that nextNode() returns the first node in the set
-ok($iterator->nextNode() == $root);
+ok($iterator->nextNode() == $root,
+  "first node is root");
 
 my $success = 1;
 my $count = 0;
@@ -72,7 +74,9 @@ while (my $node = $iterator->nextNode()) {
   $success = 0 unless $node->isa('XML::Xerces::DOMElement');
 }
 # test that we only got elements
-ok($success);
+ok($success,
+  "TreeWalker returns only DOMElements");
 
 #test that we got all the elements
-ok($count == 9);
+ok($count == 9,
+  "TreeWalker traverses all elements in tree");

@@ -1,5 +1,21 @@
+ #
+ # Copyright 2002,2004 The Apache Software Foundation.
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+ # you may not use this file except in compliance with the License.
+ # You may obtain a copy of the License at
+ #
+ #      http://www.apache.org/licenses/LICENSE-2.0
+ #
+ # Unless required by applicable law or agreed to in writing, software
+ # distributed under the License is distributed on an "AS IS" BASIS,
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ #
+
 use ExtUtils::MakeMaker;
-use Env qw(XERCES_LIB 
+use Env qw(XERCES_LIB
 	   XERCES_CONFIG
 	   XERCES_INCLUDE
 	   XERCESCROOT
@@ -8,6 +24,14 @@ use Env qw(XERCES_LIB
 use strict;
 use vars qw($INCLUDES $CXX $CFLAGS @LDFLAGS @OPTIMIZE);
 use File::Basename;
+
+# We need to know which version of libxerces we are to use.
+# As of Xerces-C 1.5.1, minor version numbers are used
+my $XERCES_MAJOR_VERSION = '2.7';
+my $XERCES_MINOR_VERSION = '0';
+my $XERCES_LIB_VERSION = "$XERCES_MAJOR_VERSION.$XERCES_MINOR_VERSION";
+my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-0';
+my $XERCES_VERSION = "$XERCES_LIB_VERSION";
 
 eval {
   require 5.6.0;
@@ -33,7 +57,7 @@ if (defined $XERCES_LIB || defined $XERCES_INCLUDE) {
   # they are instructing us to use the build directories
   $XERCES_INCLUDE = "$XERCESCROOT/include";
   $XERCES_LIB = "$XERCESCROOT/lib";
-} 
+}
 
 my $LIBS = '-lpthread';
 $INCLUDES = '-I. -IHandler';
@@ -79,59 +103,29 @@ if (defined $XERCES_CONFIG) {
    WARNING
 
 You have defined the XERCES_CONFIG variable, but it does not seem to
-point to the $config_file file that was used to build your
-Xerces-C. Without that file, I may not be able to properly build the
+point to the $config_file file that was used to build your Xerces-C
+library. Without that file, I may not be able to properly build the
 C++ glue files that come with Xerces.pm.
 
-Proceeding ...
+Proceeding anyway ...
 EOW
   }
 } elsif (defined $XERCESCROOT) {
-  my $file = "$XERCESCROOT/src/xercesc/$config_file";
-  if (-f "$file") {
-    print STDERR "using config file: $file\n";
-    open(CONF,$file)
-      or die "Couldn't open $file for reading";
-    while (<CONF>) {
-      if (/\@CXXFLAGS\@/) {
-	my ($flags) = /%([^%]*)%g$/;
-	my @flags = split /\s+/, $flags;
-	my @new_flags;
-	foreach my $flag (@flags) {
-	  if ($flag =~ /^(-(g|O).?)$/) {
-	    @OPTIMIZE = (OPTIMIZE => $1);
-	    next;
-	  } elsif ($flag =~ /^-DPROJ_/) {
-	    next;
-	  }
-	  push(@new_flags,$flag);
-	}
-	($CXXFLAGS) = join(' ',@new_flags);
-      } elsif (/\@LDFLAGS\@/) {
-	($LDFLAGS) = /%([^%]*)%g$/;
-	@LDFLAGS = ('LDFLAGS'     => $LDFLAGS)
-	  if $LDFLAGS !~ /^\s*$/;
-      } elsif (/\@CXX\@/) {
-	($CXX) = /%([^%]*)%g$/
-      }
-    }
-    print STDERR <<EOM;
-
-Found CXX      = $CXX
-Found CXXFLAGS = $CXXFLAGS
-Found LDFLAGS  = $LDFLAGS
-EOM
-  } else {
-  print STDERR <<EOW;
+  $XERCES_CONFIG = "$XERCESCROOT/src/xercesc/$config_file";
+  unless (-f $XERCES_CONFIG) {
+    print STDERR <<EOW;
 
    WARNING
 
-You have defined the XERCESCROOT variable, but I am unable to locate
-the $config_file file that was used to build your Xerces-C. Without
-that file, I may not be able to properly build the C++ glue files that
-come with Xerces.pm.
+You have defined the XERCESCROOT variable, but the file:
 
-Proceeding ...
+  XERCESCROOT/src/xercesc/$config_file
+
+ does not seem to point to the $config_file file that was used to
+ build your Xerces-C library. Without that file, I may not be able to
+ properly build the C++ glue files that come with Xerces.pm.
+
+Proceeding anyway ...
 EOW
   }
 } else {
@@ -144,22 +138,49 @@ You have not defined any of the following environment variables:
    XERCES_CONFIG
 
 Without these I cannot find the $config_file file that was used to
-build your Xerces-C. Without that file, I may not be able to properly
+build your Xerces-C library. Without that file, I may not be able to properly
 build the C++ glue files that come with Xerces.pm.
 
-Proceeding ...
+Proceeding anyway ...
 EOW
 }
 
-$CFLAGS .= " $CXXFLAGS ";
+if (-f $XERCES_CONFIG) {
+  print STDERR "using XERCES_CONFIG: $XERCES_CONFIG\n";
+  open(CONF,$XERCES_CONFIG)
+    or die "Couldn't open $XERCES_CONFIG for reading";
+  while (<CONF>) {
+    if (/\@CXXFLAGS\@/) {
+      my ($flags) = /%([^%]*)%g$/;
+      my @flags = split /\s+/, $flags;
+      my @new_flags;
+      foreach my $flag (@flags) {
+	if ($flag =~ /^(-(g|O).?)$/) {
+	  @OPTIMIZE = (OPTIMIZE => $1);
+	  next;
+	} elsif ($flag =~ /^-DPROJ_/) {
+	  next;
+	}
+	push(@new_flags,$flag);
+      }
+      ($CXXFLAGS) = join(' ',@new_flags);
+    } elsif (/\@LDFLAGS\@/) {
+      ($LDFLAGS) = /%([^%]*)%g$/;
+      @LDFLAGS = ('LDFLAGS'     => $LDFLAGS)
+	if $LDFLAGS !~ /^\s*$/;
+    } elsif (/\@CXX\@/) {
+      ($CXX) = /%([^%]*)%g$/
+    }
+  }
+  print STDERR <<EOM;
 
-# We need to know which version of libxerces we are to use. 
-# As of Xerces-C 1.5.1, minor version numbers are used
-my $XERCES_MAJOR_VERSION = '2.5';
-my $XERCES_MINOR_VERSION = '0';
-my $XERCES_LIB_VERSION = "$XERCES_MAJOR_VERSION.$XERCES_MINOR_VERSION";
-my $XERCES_PERL_VERSION = $XERCES_LIB_VERSION . '-0';
-my $XERCES_VERSION = "$XERCES_LIB_VERSION";
+Found CXX      = $CXX
+Found CXXFLAGS = $CXXFLAGS
+Found LDFLAGS  = $LDFLAGS
+EOM
+}
+
+$CFLAGS .= " $CXXFLAGS ";
 
 # find the version of Xerces-C we are using
 my $file_name = 'XercesVersion.hpp';
@@ -255,11 +276,15 @@ if ($XERCES_DEVEL) {
   # set up the custom headers
   my @header_files;
   my @handler_headers;
+  my @interface_files;
   chomp(@handler_headers = `$FIND Handler -name "*.swig.hpp"`);
 
   sub Xerces_postamble {
     chomp(my @import_files = `$FIND Handler -name "*.i"`);
     push(@header_files,@handler_headers,@import_files);
+
+    chomp(my @interface_files = `$FIND interface -name "*.i"`);
+    @interface_files = grep {$_ ne 'interface/Perl/shadow.i'} @interface_files;
     local $" = ' ';
     my $OS_DEF;
     my $CC_DEF;
@@ -275,7 +300,7 @@ if ($XERCES_DEVEL) {
     } else {
       die 'unsupported compiler';
     }
-    my $SWIG_ARGS = qq[-Wall $OS_DEF $CC_DEF -DXERCES_VERSION="$XERCES_PERL_VERSION" \$(INC) -perl5 -c++ -shadow];
+    my $SWIG_ARGS = qq[-Wall $OS_DEF $CC_DEF -DXERCES_OLD -DXERCES_VERSION="$XERCES_PERL_VERSION" \$(INC) -perl5 -c++ -shadow];
 
     my $MAKE = '	\$(MAKE) -C Handler static';
     if ($^O eq 'MSWin32') {
@@ -283,20 +308,24 @@ if ($XERCES_DEVEL) {
       $MAKE =  '	cd Handler && \$(MAKE) static';
     }
 
+    ### We no longer need to munge the C++ code thanks to SWIG improvements
+    # perl postSource.pl Xerces.cpp
     my $retval = <<TERMINUS;
-Xerces.cpp: Xerces.i typemaps.i @header_files postSource.pl 
-	\$(SWIG) $SWIG_ARGS -o Xerces.cpp Xerces.i
-	perl postSource.pl Xerces.cpp
-	perl postModule.pl Xerces.pm
+Xerces-tmp.pm: postModule.pl interface/Perl/shadow.i
+	\$(SWIG) $SWIG_ARGS -o Xerces-tmp.cpp Xerces.i
+	mv Xerces.pm Xerces-tmp.pm
 
+Xerces.pm: postModule.pl Xerces-tmp.pm
+	perl postModule.pl
 
-Xerces.pm: Xerces.cpp postModule.pl Xerces-extra.pm
-	if [[ postModule.pl -nt Xerces.pm || Xerces-extra.pm -nt Xerces.pm ]] ; then \\
-\$(SWIG) $SWIG_ARGS -o foo.C Xerces.i ; \\
-rm foo.C ; \\
-perl postModule.pl Xerces.pm ; \\
-cp -f Xerces.pm blib/lib/XML ; \\
-	fi
+Xerces.cpp: postSource.pl Xerces-tmp.cpp
+	perl postSource.pl
+
+Xerces-tmp.cpp: Xerces.i @interface_files @header_files  Xerces-extra.pm
+	\$(SWIG) $SWIG_ARGS -o Xerces-tmp.cpp Xerces.i
+	mv Xerces.pm Xerces-tmp.pm
+	perl postModule.pl
+	cp -f Xerces.pm blib/lib/XML/Xerces.pm
 
 $HANDLER_LIB:
 $MAKE
@@ -310,9 +339,6 @@ TERMINUS
   @MACRO = ('macro'       => {
     'SWIG'         => "$swig",
   });
-
-  # we'll assume that we want -g as a default
-  #  @OPTIMIZE = (OPTIMIZE => '-g');
 
   # we want all warnings
   $CFLAGS .= ' -Wall';

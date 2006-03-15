@@ -51,6 +51,8 @@ my $target = XML::Xerces::MemBufFormatTarget->new();
 my $doc = $dom->getDocument();
 $writer->writeNode($target,$doc);
 my $output = $target->getRawBuffer();
-ok($output);
-ok($output eq $document);
+
+ok($output, "output written");
+is($output, $document, "got expected document");
+
 

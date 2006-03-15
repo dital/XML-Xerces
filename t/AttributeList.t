@@ -9,7 +9,7 @@ END {ok(0) unless $loaded;}
 use Carp;
 use blib;
 use XML::Xerces;
-use Test::More tests => 8;
+use Test::More tests => 11;
 use Config;
 
 use lib 't';
@@ -21,6 +21,12 @@ $loaded = 1;
 ok($loaded, "module loaded");
 
 ######################### End of black magic.
+
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Initialize()
+  #   when the module is loaded. Xerces.pm no longer does this.
+  #
+  #
+XML::Xerces::XMLPlatformUtils::Initialize();
 
 package MyDocumentHandler;
 use strict;
@@ -64,7 +70,8 @@ $DOCUMENT_HANDLER->{test} = '';
 eval {$SAX->parse($is)};
 XML::Xerces::error($@) if $@;
 
-ok($DOCUMENT_HANDLER->{test} == 3);
+ok($DOCUMENT_HANDLER->{test} == 3,
+  "getLength");
 $DOCUMENT_HANDLER->{test} = '';
 
 # we want to avoid a bunch of warnings about redefining
@@ -80,7 +87,8 @@ $^W = 0;
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
-ok($DOCUMENT_HANDLER->{test} eq "$ns:$local");
+ok($DOCUMENT_HANDLER->{test} eq "$ns:$local",
+  "getName");
 
 # test getValue
 *MyDocumentHandler::start_element = sub {
@@ -91,7 +99,8 @@ ok($DOCUMENT_HANDLER->{test} eq "$ns:$local");
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
-ok($DOCUMENT_HANDLER->{test} eq $value);
+ok($DOCUMENT_HANDLER->{test} eq $value,
+  "getValue - string");
 
 # test overloaded getValue
 *MyDocumentHandler::start_element = sub {
@@ -104,7 +113,8 @@ $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
 # print STDERR "<$DOCUMENT_HANDLER->{test}>" , "\n";
 # print STDERR "<$value>" , "\n";
-ok($DOCUMENT_HANDLER->{test} eq $value);
+ok($DOCUMENT_HANDLER->{test} eq $value,
+  "getValue - int");
 
 # test to_hash()
 *MyDocumentHandler::start_element = sub {
@@ -116,12 +126,15 @@ ok($DOCUMENT_HANDLER->{test} eq $value);
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is);
 my $hash_ref = $DOCUMENT_HANDLER->{test};
-ok(ref($hash_ref) eq 'HASH'
-      && keys %{$hash_ref} == 3
-      && $hash_ref->{"$ns:$local"} eq $value);
+isa_ok($hash_ref, 'HASH',
+      "to_hash()");
+is(keys %{$hash_ref}, 3,
+      "to_hash()");
+is($hash_ref->{"$ns:$local"}, $value,
+      "to_hash()");
 
-$document = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!DOCTYPE bar SYSTEM "foo.dtd" [
+my $document2 = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE bar [
 <!ELEMENT bar (foo)>
 <!ELEMENT foo EMPTY>
 <!ATTLIST foo id ID #REQUIRED>
@@ -146,7 +159,8 @@ sub resolve_entity {
 }
 
 package main;
-my $is2 = XML::Xerces::MemBufInputSource->new($document);
+my $is2 = eval{XML::Xerces::MemBufInputSource->new($document2)};
+XML::Xerces::error($@) if $@;
 $SAX->setEntityResolver(MyEntityResolver->new());
 
 # test overloaded getType
@@ -157,8 +171,10 @@ $SAX->setEntityResolver(MyEntityResolver->new());
   }
 };
 $DOCUMENT_HANDLER->{test} = '';
+
 $SAX->parse($is2);
-ok($DOCUMENT_HANDLER->{test} eq 'ID');
+is($DOCUMENT_HANDLER->{test}, 'ID',
+   "getType - int");
 
 # test getType
 *MyDocumentHandler::start_element = sub {
@@ -169,4 +185,33 @@ ok($DOCUMENT_HANDLER->{test} eq 'ID');
 };
 $DOCUMENT_HANDLER->{test} = '';
 $SAX->parse($is2);
-ok($DOCUMENT_HANDLER->{test} eq 'ID');
+is($DOCUMENT_HANDLER->{test}, 'ID',
+   "getType");
+
+my $document3 = qq[<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE bar SYSTEM "foo.dtd" [
+<!ELEMENT bar (foo)>
+<!ELEMENT foo EMPTY>
+<!ATTLIST foo id ID #REQUIRED>
+<!ATTLIST foo role CDATA #REQUIRED>
+]>
+<bar>
+  <foo id='baz' role="manager"/>
+</bar>];
+
+$is2 = eval{XML::Xerces::MemBufInputSource->new($document3)};
+
+TODO : {
+  todo_skip "blank documents segfault the entity resolver", 1;
+
+  $SAX->parse($is2);
+  pass("blank document does not segfault the entity resolver");
+}
+
+END {
+  # NOTICE: We must now explicitly call XMLPlatformUtils::Terminate()
+  #   when the module is unloaded. Xerces.pm no longer does this for us
+  #
+  #
+  XML::Xerces::XMLPlatformUtils::Terminate();
+}

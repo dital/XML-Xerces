@@ -61,7 +61,8 @@ my $root2 = $doc2->getDocumentElement();
 my @persons2 = $doc2->getElementsByTagName('person');
 my @names2 = $doc1->getElementsByTagName('name');
 
-ok($root1 != $root2);
+ok(($root1 != $root2), 
+   "root1 and root2 are different");
 
 # importing a child from a different document
 eval {
@@ -69,9 +70,12 @@ eval {
   $root1->appendChild($copy);
 };
 ok(!$@ &&
-      scalar @persons1 < scalar ($root1->getElementsByTagName('person')));
+   scalar @persons1 < scalar ($root1->getElementsByTagName('person')),
+   "import node");
 
 # test the equality operators
 my @people = $doc1->getElementsByTagName('person');
-ok($root1 != $root2);
-ok($people[0] == $persons1[0]);
+ok(($root1 != $root2),
+   "root nodes are unequal");
+ok(($people[0] == $persons1[0]),
+   "nodes are equal");

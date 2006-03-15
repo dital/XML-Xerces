@@ -1,3 +1,19 @@
+/*
+ * Copyright 2002,2004 The Apache Software Foundation.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "xercesc/sax/InputSource.hpp"
 #include "PerlEntityResolverHandler.hpp"
 
@@ -49,6 +65,7 @@ PerlEntityResolverHandler::resolveEntity (const XMLCh* const publicId,
     }
 
     dSP;
+    InputSource *source;
 
     ENTER;
     SAVETMPS;
@@ -81,20 +98,32 @@ PerlEntityResolverHandler::resolveEntity (const XMLCh* const publicId,
 
     SPAGAIN ;
 
+    SV* source_sv;
     if (count != 1)
-	croak("EntityResolver did not retury any object\n") ;
+    {
+	warn("EntityResolver did not retury any object\n");
+	source_sv = &PL_sv_undef;
+    }
+    else
+    {
+        source_sv = POPs;
+    }
 
-    SV* source_sv = POPs;
-    InputSource *source;
-    if (!sv_derived_from(source_sv,"XML::Xerces::InputSource")) {
-	croak("EntityResolver did not retury an InputSource\n") ;
+    if (count == 1 && SvOK(source_sv) && !sv_derived_from(source_sv,"XML::Xerces::InputSource")) {
+	croak("EntityResolver did not return an InputSource\n") ;
     }
 
     if (SWIG_ConvertPtr(source_sv,(void **) &source, SWIGTYPE_p_XERCES_CPP_NAMESPACE__InputSource,0) < 0) {
 
-        croak("EntityResolver did not retury an InputSource. Expected %s", SWIGTYPE_p_XERCES_CPP_NAMESPACE__InputSource->name);
+        croak("EntityResolver did not return an InputSource. Expected %s", SWIGTYPE_p_XERCES_CPP_NAMESPACE__InputSource->name);
     }
     PUTBACK ;
+
+
+	// transcode mallocs this and leaves it up to us to free the memory
+    delete [] cptr1;
+    delete [] cptr2;
+
     FREETMPS;
     LEAVE;
     return source;
